@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   SlugGeometry,
   SlugGenerator,
@@ -9,16 +9,16 @@ import {
   injectSlug,
   type SlugGeneratedData,
   type SlugLoaderData,
-} from '../library';
+} from "../library";
 
 const host = ref<HTMLDivElement | null>(null);
-const status = ref('Initializing renderer...');
-const inputText = ref('TS Slug\nTypeScript Port');
+const status = ref("Initializing renderer...");
+const inputText = ref("TS Slug\nTypeScript Port");
 const fontScale = ref(0.14);
 const lineSpacing = ref(1.15);
 const useInjectedStandard = ref(false);
-const cameraMode = ref<'2d' | 'orbit'>('2d');
-const selectedFont = ref('SpaceMono-Regular.ttf');
+const cameraMode = ref<"2d" | "orbit">("2d");
+const selectedFont = ref("SpaceMono-Regular.ttf");
 const availableFonts = ref<string[]>([]);
 const renderInfo = ref({
   calls: 0,
@@ -90,7 +90,7 @@ function setupCameraAndControls(): void {
   controls?.dispose();
   controls = null;
 
-  if (cameraMode.value === 'orbit') {
+  if (cameraMode.value === "orbit") {
     camera = new THREE.PerspectiveCamera(45, 1, 0.1, 8000);
     camera.position.set(0, 0, 1200);
   } else {
@@ -104,7 +104,7 @@ function setupCameraAndControls(): void {
   controls.screenSpacePanning = true;
   controls.target.set(0, 0, 0);
 
-  if (cameraMode.value === 'orbit') {
+  if (cameraMode.value === "orbit") {
     controls.enableRotate = true;
     controls.minDistance = 50;
     controls.maxDistance = 6000;
@@ -127,16 +127,19 @@ function buildTextMesh(): void {
   const glyphCapacity = Math.max(256, inputText.value.length * 4);
   const geometry = new SlugGeometry(glyphCapacity);
 
-  const baseLineHeight = loadedSlugData.unitsPerEm > 0
-    ? loadedSlugData.ascender - loadedSlugData.descender + loadedSlugData.lineGap
-    : 2000;
+  const baseLineHeight =
+    loadedSlugData.unitsPerEm > 0
+      ? loadedSlugData.ascender -
+        loadedSlugData.descender +
+        loadedSlugData.lineGap
+      : 2000;
 
   geometry.addText(inputText.value, loadedSlugData, {
     fontScale: fontScale.value,
     lineHeight: baseLineHeight * lineSpacing.value * fontScale.value,
     startX: 0,
     startY: 0,
-    justify: 'left',
+    justify: "left",
   });
 
   const material = useInjectedStandard.value
@@ -167,7 +170,7 @@ function buildTextMesh(): void {
 
   scene.add(mesh);
   textMesh = mesh;
-  status.value = 'Slug demo ready.';
+  status.value = "Slug demo ready.";
 }
 
 function loadSelectedFont(): void {
@@ -224,22 +227,26 @@ onMounted(async () => {
 
   resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(host.value);
-  window.addEventListener('resize', resize);
+  window.addEventListener("resize", resize);
   resize();
 
   try {
-    const response = await fetch('/fonts/fonts.json');
+    const response = await fetch("/fonts/fonts.json");
     const fonts = (await response.json()) as string[];
-    availableFonts.value = fonts.filter((name) => name.toLowerCase().endsWith('.ttf'));
+    availableFonts.value = fonts.filter((name) =>
+      name.toLowerCase().endsWith(".ttf"),
+    );
     if (availableFonts.value.length > 0) {
-      selectedFont.value = availableFonts.value.includes('SpaceMono-Regular.ttf')
-        ? 'SpaceMono-Regular.ttf'
+      selectedFont.value = availableFonts.value.includes(
+        "SpaceMono-Regular.ttf",
+      )
+        ? "SpaceMono-Regular.ttf"
         : availableFonts.value[0];
     }
   } catch (error) {
     console.error(error);
-    availableFonts.value = ['SpaceMono-Regular.ttf', 'DejaVuSansMono.ttf'];
-    selectedFont.value = 'SpaceMono-Regular.ttf';
+    availableFonts.value = ["SpaceMono-Regular.ttf", "DejaVuSansMono.ttf"];
+    selectedFont.value = "SpaceMono-Regular.ttf";
   }
 
   loadSelectedFont();
@@ -282,7 +289,7 @@ watch([inputText, fontScale, lineSpacing, useInjectedStandard], () => {
 
 onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrame);
-  window.removeEventListener('resize', resize);
+  window.removeEventListener("resize", resize);
   resizeObserver?.disconnect();
   controls?.dispose();
 
@@ -303,7 +310,11 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="demo-root">
-    <div ref="host" class="fullscreen-canvas" aria-label="Slug render viewport"></div>
+    <div
+      ref="host"
+      class="fullscreen-canvas"
+      aria-label="Slug render viewport"
+    ></div>
 
     <aside class="overlay">
       <p class="kicker">Slug Text Demo</p>
@@ -330,7 +341,9 @@ onBeforeUnmount(() => {
       <label>
         TTF Font
         <select v-model="selectedFont">
-          <option v-for="font in availableFonts" :key="font" :value="font">{{ font }}</option>
+          <option v-for="font in availableFonts" :key="font" :value="font">
+            {{ font }}
+          </option>
         </select>
       </label>
 
@@ -367,8 +380,9 @@ onBeforeUnmount(() => {
 
       <p class="status">{{ status }}</p>
       <p class="hint">
-        injectSlug(mesh, MeshStandardMaterial, slugData) garde l'eclairage PBR / shadows standards
-        tout en remplaçant le test alpha par le traçage Slug dans le shader compilé.
+        injectSlug(mesh, MeshStandardMaterial, slugData) garde l'eclairage PBR /
+        shadows standards tout en remplaçant le test alpha par le traçage Slug
+        dans le shader compilé.
       </p>
 
       <div class="stats">
@@ -450,7 +464,7 @@ label {
 
 select,
 textarea,
-input[type='range'] {
+input[type="range"] {
   width: 100%;
 }
 
