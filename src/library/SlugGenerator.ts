@@ -13,7 +13,10 @@ type OpentypeFontLike = {
   lineGap?: number;
   unitsPerEm?: number;
   charToGlyph: (char: string) => OpentypeGlyph;
-  getKerningValue: (leftGlyph: OpentypeGlyph, rightGlyph: OpentypeGlyph) => number;
+  getKerningValue: (
+    leftGlyph: OpentypeGlyph,
+    rightGlyph: OpentypeGlyph,
+  ) => number;
 };
 
 const TEXTURE_WIDTH = 4096;
@@ -382,7 +385,10 @@ export class SlugGenerator {
     const kerningPairs = new Map<string, number>();
     const glyphCache = new Map<number, OpentypeGlyph>();
 
-    const getKerning = (leftCodePoint: number, rightCodePoint: number): number => {
+    const getKerning = (
+      leftCodePoint: number,
+      rightCodePoint: number,
+    ): number => {
       if (leftCodePoint < 0 || rightCodePoint < 0) return 0;
 
       const key = `${leftCodePoint}:${rightCodePoint}`;

@@ -149,7 +149,9 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     }
 
     if (slugData.kerningPairs) {
-      return slugData.kerningPairs.get(`${leftCodePoint}:${rightCodePoint}`) || 0;
+      return (
+        slugData.kerningPairs.get(`${leftCodePoint}:${rightCodePoint}`) || 0
+      );
     }
 
     return 0;
