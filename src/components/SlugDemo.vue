@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   SlugGeometry,
   SlugGenerator,
@@ -16,19 +17,30 @@ const inputText = ref('TS Slug\nTypeScript Port');
 const fontScale = ref(0.14);
 const lineSpacing = ref(1.15);
 const useInjectedStandard = ref(false);
+const cameraMode = ref<'2d' | 'orbit'>('2d');
 const selectedFont = ref('SpaceMono-Regular.ttf');
 const availableFonts = ref<string[]>([]);
+const renderInfo = ref({
+  calls: 0,
+  triangles: 0,
+  lines: 0,
+  points: 0,
+  geometries: 0,
+  textures: 0,
+});
 
 type RenderSlugData = SlugLoaderData | SlugGeneratedData;
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
-let camera: THREE.PerspectiveCamera | null = null;
+let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | null = null;
+let controls: OrbitControls | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let animationFrame = 0;
 let textMesh: THREE.Mesh | null = null;
 let loadedSlugData: RenderSlugData | null = null;
 let loadTicket = 0;
+let frameCounter = 0;
 const slugGenerator = new SlugGenerator({ fullRange: true });
 const generatedCache = new Map<string, RenderSlugData>();
 
@@ -55,8 +67,56 @@ function resize(): void {
 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(width, height, false);
-  camera.aspect = width / height;
+
+  if (camera instanceof THREE.PerspectiveCamera) {
+    camera.aspect = width / height;
+  } else {
+    const orthoCamera = camera as THREE.OrthographicCamera;
+    const frustumHeight = 1000;
+    const halfH = frustumHeight / 2;
+    const halfW = halfH * (width / height);
+    orthoCamera.left = -halfW;
+    orthoCamera.right = halfW;
+    orthoCamera.top = halfH;
+    orthoCamera.bottom = -halfH;
+  }
+
   camera.updateProjectionMatrix();
+}
+
+function setupCameraAndControls(): void {
+  if (!host.value || !renderer || !scene) return;
+
+  controls?.dispose();
+  controls = null;
+
+  if (cameraMode.value === 'orbit') {
+    camera = new THREE.PerspectiveCamera(45, 1, 0.1, 8000);
+    camera.position.set(0, 0, 1200);
+  } else {
+    camera = new THREE.OrthographicCamera(-500, 500, 500, -500, -5000, 5000);
+    camera.position.set(0, 0, 1200);
+  }
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.screenSpacePanning = true;
+  controls.target.set(0, 0, 0);
+
+  if (cameraMode.value === 'orbit') {
+    controls.enableRotate = true;
+    controls.minDistance = 50;
+    controls.maxDistance = 6000;
+  } else {
+    controls.enableRotate = false;
+    controls.minZoom = 0.2;
+    controls.maxZoom = 20;
+    controls.zoomSpeed = 1.2;
+  }
+
+  controls.update();
+  resize();
 }
 
 function buildTextMesh(): void {
@@ -144,13 +204,12 @@ onMounted(async () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x050b13);
 
-  camera = new THREE.PerspectiveCamera(35, 1, 0.1, 5000);
-  camera.position.set(0, 0, 900);
-
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   host.value.appendChild(renderer.domElement);
+
+  setupCameraAndControls();
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambient);
@@ -188,7 +247,20 @@ onMounted(async () => {
   const tick = () => {
     animationFrame = window.requestAnimationFrame(tick);
     if (renderer && scene && camera) {
+      controls?.update();
       renderer.render(scene, camera);
+
+      frameCounter++;
+      if (frameCounter % 10 === 0) {
+        renderInfo.value = {
+          calls: renderer.info.render.calls,
+          triangles: renderer.info.render.triangles,
+          lines: renderer.info.render.lines,
+          points: renderer.info.render.points,
+          geometries: renderer.info.memory.geometries,
+          textures: renderer.info.memory.textures,
+        };
+      }
     }
   };
 
@@ -197,6 +269,10 @@ onMounted(async () => {
 
 watch(selectedFont, () => {
   loadSelectedFont();
+});
+
+watch(cameraMode, () => {
+  setupCameraAndControls();
 });
 
 watch([inputText, fontScale, lineSpacing, useInjectedStandard], () => {
@@ -208,6 +284,7 @@ onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrame);
   window.removeEventListener('resize', resize);
   resizeObserver?.disconnect();
+  controls?.dispose();
 
   disposeTextMesh();
 
@@ -219,6 +296,7 @@ onBeforeUnmount(() => {
   renderer = null;
   scene = null;
   camera = null;
+  controls = null;
   loadedSlugData = null;
 });
 </script>
@@ -229,7 +307,25 @@ onBeforeUnmount(() => {
 
     <aside class="overlay">
       <p class="kicker">Slug Text Demo</p>
-      <h1>Fullscreen Canvas + Live Controls</h1>
+      <h1>Slug Controls</h1>
+
+      <div class="row two">
+        <label>
+          Camera
+          <select v-model="cameraMode">
+            <option value="2d">2D (pan/zoom)</option>
+            <option value="orbit">Orbit (3D)</option>
+          </select>
+        </label>
+
+        <label>
+          Material
+          <select v-model="useInjectedStandard">
+            <option :value="false">SlugMaterial</option>
+            <option :value="true">MeshStandard+inject</option>
+          </select>
+        </label>
+      </div>
 
       <label>
         TTF Font
@@ -269,13 +365,21 @@ onBeforeUnmount(() => {
         />
       </label>
 
-      <label class="switch-row">
-        <input v-model="useInjectedStandard" type="checkbox" />
-        Use MeshStandard + injectSlug
-      </label>
-
       <p class="status">{{ status }}</p>
-      <p class="status">Pipeline: TTF -> SlugGenerator -> GPU textures</p>
+      <p class="hint">
+        injectSlug(mesh, MeshStandardMaterial, slugData) garde l'eclairage PBR / shadows standards
+        tout en remplaçant le test alpha par le traçage Slug dans le shader compilé.
+      </p>
+
+      <div class="stats">
+        <p class="stats-title">renderer.info</p>
+        <p>calls: {{ renderInfo.calls }}</p>
+        <p>triangles: {{ renderInfo.triangles }}</p>
+        <p>lines: {{ renderInfo.lines }}</p>
+        <p>points: {{ renderInfo.points }}</p>
+        <p>geometries: {{ renderInfo.geometries }}</p>
+        <p>textures: {{ renderInfo.textures }}</p>
+      </div>
     </aside>
   </section>
 </template>
@@ -301,17 +405,19 @@ onBeforeUnmount(() => {
 
 .overlay {
   position: absolute;
-  top: 18px;
-  left: 18px;
-  width: min(430px, calc(100vw - 36px));
-  padding: 18px;
-  border-radius: 18px;
+  top: 12px;
+  left: 12px;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
   background: rgba(4, 11, 20, 0.76);
   border: 1px solid rgba(136, 175, 255, 0.3);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .kicker {
@@ -324,15 +430,21 @@ onBeforeUnmount(() => {
 
 h1 {
   margin: 0 0 4px;
-  font-size: clamp(1.25rem, 2.2vw, 1.7rem);
+  font-size: clamp(1.05rem, 1.9vw, 1.35rem);
   color: #f6fbff;
+}
+
+.row.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 0.92rem;
+  gap: 4px;
+  font-size: 0.82rem;
   color: rgba(233, 244, 255, 0.92);
 }
 
@@ -347,33 +459,57 @@ textarea {
   background: rgba(3, 9, 16, 0.84);
   color: #f8fbff;
   border: 1px solid rgba(158, 187, 255, 0.34);
-  border-radius: 10px;
-  padding: 9px 11px;
+  border-radius: 8px;
+  padding: 7px 8px;
 }
 
 textarea {
   resize: vertical;
-  min-height: 70px;
-}
-
-.switch-row {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
+  min-height: 60px;
 }
 
 .status {
-  margin: 2px 0 0;
+  margin: 0;
   color: #ffd57f;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: rgba(190, 210, 255, 0.9);
+}
+
+.stats {
+  margin-top: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 175, 255, 0.25);
+  background: rgba(2, 7, 12, 0.65);
+}
+
+.stats-title {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  color: #8cb2ff;
+}
+
+.stats p {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.25;
 }
 
 @media (max-width: 640px) {
   .overlay {
-    top: 12px;
-    left: 12px;
-    width: calc(100vw - 24px);
-    padding: 14px;
+    width: calc(100vw - 16px);
+    top: 8px;
+    left: 8px;
+  }
+
+  .row.two {
+    grid-template-columns: 1fr;
   }
 }
 </style>
