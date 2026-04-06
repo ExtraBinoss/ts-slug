@@ -41,6 +41,18 @@ export interface SlugGeneratedData {
   _raw: SlugGeneratedRawData;
 }
 
+export interface SlugGlyphStyle {
+  color?: [number, number, number, number];
+  params?: [number, number, number, number];
+}
+
+export type SlugGlyphStyleResolver = (
+  codePoint: number,
+  lineIndex: number,
+  glyphIndex: number,
+  line: string,
+) => SlugGlyphStyle | null | undefined;
+
 export interface SlugLoaderData {
   codePoints: Map<number, SlugCodePointData>;
   curvesTex: THREE.DataTexture;
@@ -64,6 +76,7 @@ export interface SlugTextOptions {
   startX?: number;
   startY?: number;
   justify?: "left" | "center" | "right";
+  glyphStyle?: SlugGlyphStyle | SlugGlyphStyleResolver;
 }
 
 export interface SlugMaterialParameters {

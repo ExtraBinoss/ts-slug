@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import type {
   SlugCodePointData,
-  SlugTextOptions,
+  SlugGlyphStyle,
+  SlugGlyphStyleResolver,
   SlugLoaderData,
+  SlugTextOptions,
 } from "./types";
 
 export class SlugGeometry extends THREE.InstancedBufferGeometry {
@@ -11,6 +13,8 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
   aScaleBias: Float32Array;
   aGlyphBandScale: Float32Array;
   aBandMaxTexCoords: Float32Array;
+  aGlyphColor: Float32Array;
+  aGlyphParams: Float32Array;
 
   constructor(maxGlyphs = 1024) {
     super();
@@ -38,6 +42,8 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     this.aScaleBias = new Float32Array(maxGlyphs * 4);
     this.aGlyphBandScale = new Float32Array(maxGlyphs * 4);
     this.aBandMaxTexCoords = new Float32Array(maxGlyphs * 4);
+    this.aGlyphColor = new Float32Array(maxGlyphs * 4);
+    this.aGlyphParams = new Float32Array(maxGlyphs * 4);
 
     const attrScaleBias = new THREE.InstancedBufferAttribute(
       this.aScaleBias,
@@ -59,6 +65,20 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     );
     attrBandMaxTexCoords.setUsage(THREE.DynamicDrawUsage);
     this.setAttribute("aBandMaxTexCoords", attrBandMaxTexCoords);
+
+    const attrGlyphColor = new THREE.InstancedBufferAttribute(
+      this.aGlyphColor,
+      4,
+    );
+    attrGlyphColor.setUsage(THREE.DynamicDrawUsage);
+    this.setAttribute("aGlyphColor", attrGlyphColor);
+
+    const attrGlyphParams = new THREE.InstancedBufferAttribute(
+      this.aGlyphParams,
+      4,
+    );
+    attrGlyphParams.setUsage(THREE.DynamicDrawUsage);
+    this.setAttribute("aGlyphParams", attrGlyphParams);
 
     this.instanceCount = 0;
     this.boundingBox = new THREE.Box3();
@@ -88,6 +108,7 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     height: number,
     _displayWidth: number,
     _displayHeight: number,
+    style?: SlugGlyphStyle | null,
   ): boolean {
     if (this.glyphCount >= this.maxGlyphs) {
       console.warn("Max glyphs reached");
@@ -124,6 +145,17 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     this.aBandMaxTexCoords[index * 4 + 2] = codePointData.bandsTexCoordX;
     this.aBandMaxTexCoords[index * 4 + 3] = codePointData.bandsTexCoordY;
 
+    const color = style?.color || [1, 1, 1, 1];
+    const params = style?.params || [0, 0, 0, 0];
+    this.aGlyphColor[index * 4 + 0] = color[0];
+    this.aGlyphColor[index * 4 + 1] = color[1];
+    this.aGlyphColor[index * 4 + 2] = color[2];
+    this.aGlyphColor[index * 4 + 3] = color[3];
+    this.aGlyphParams[index * 4 + 0] = params[0];
+    this.aGlyphParams[index * 4 + 1] = params[1];
+    this.aGlyphParams[index * 4 + 2] = params[2];
+    this.aGlyphParams[index * 4 + 3] = params[3];
+
     this.glyphCount++;
     this.instanceCount = this.glyphCount;
 
@@ -134,6 +166,8 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     (this.attributes as any).aScaleBias.needsUpdate = true;
     (this.attributes as any).aGlyphBandScale.needsUpdate = true;
     (this.attributes as any).aBandMaxTexCoords.needsUpdate = true;
+    (this.attributes as any).aGlyphColor.needsUpdate = true;
+    (this.attributes as any).aGlyphParams.needsUpdate = true;
     this.computeBoundingSphere();
   }
 
@@ -174,12 +208,33 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
       startX = 0,
       startY = 0,
       justify = "left",
+      glyphStyle,
     } = options;
 
     const lines = text.split("\n");
     let currentY = startY;
 
-    for (const line of lines) {
+    const resolveStyle = (
+      codePoint: number,
+      lineIndex: number,
+      glyphIndex: number,
+      line: string,
+    ): SlugGlyphStyle | null => {
+      if (!glyphStyle) return null;
+      if (typeof glyphStyle === "function") {
+        return (
+          (glyphStyle as SlugGlyphStyleResolver)(
+            codePoint,
+            lineIndex,
+            glyphIndex,
+            line,
+          ) || null
+        );
+      }
+      return glyphStyle;
+    };
+
+    lines.forEach((line, lineIndex) => {
       let lineWidth = 0;
       let previousCodePoint: number | null = null;
 
@@ -209,6 +264,7 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
       else if (justify === "right") currentX -= lineWidth;
 
       let index = 0;
+      let glyphIndex = 0;
       previousCodePoint = null;
       while (index < line.length) {
         const charCode = line.codePointAt(index) ?? 0;
@@ -220,7 +276,6 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
           previousCodePoint === null
             ? 0
             : this.getKerningAdjustment(slugData, previousCodePoint, charCode);
-
         currentX += kerning * fontScale;
 
         if (data) {
@@ -229,7 +284,16 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
             const quadH = data.height * fontScale;
             const px = currentX + data.bearingX * fontScale;
             const py = currentY + data.bearingY * fontScale;
-            this.addGlyph(data, px, py, quadW, quadH, 0, 0);
+            this.addGlyph(
+              data,
+              px,
+              py,
+              quadW,
+              quadH,
+              0,
+              0,
+              resolveStyle(charCode, lineIndex, glyphIndex, line),
+            );
           }
           currentX += data.advanceWidth * fontScale;
         } else if (line[index - 1] === " ") {
@@ -237,10 +301,11 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
         }
 
         previousCodePoint = charCode;
+        glyphIndex++;
       }
 
       currentY -= lineHeight;
-    }
+    });
 
     this.updateBuffers();
   }

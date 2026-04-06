@@ -8,6 +8,8 @@ precision highp usampler2D;
 in vec2 vTexCoords;
 flat in vec4 vGlyphBandScale;
 flat in uvec4 vBandMaxTexCoords;
+flat in vec4 vGlyphColor;
+flat in vec4 vGlyphParams;
 
 uniform sampler2D curvesTex;
 uniform usampler2D bandsTex;
@@ -120,6 +122,8 @@ const slug_fragment_core = `
 const slug_fragment_standard =
   slug_fragment_core +
   `
+    diffuseColor.rgb *= vGlyphColor.rgb;
+    diffuseColor.a *= vGlyphColor.a;
     diffuseColor.a *= slugAlpha;
     if ( diffuseColor.a < 0.0001 ) discard;
 `;
@@ -128,10 +132,14 @@ const slug_pars_vertex = `
 in vec4 aScaleBias;
 in vec4 aGlyphBandScale;
 in vec4 aBandMaxTexCoords;
+in vec4 aGlyphColor;
+in vec4 aGlyphParams;
 
 out vec2 vTexCoords;
 flat out vec4 vGlyphBandScale;
 flat out uvec4 vBandMaxTexCoords;
+flat out vec4 vGlyphColor;
+flat out vec4 vGlyphParams;
 `;
 
 const slug_vertex = `
@@ -149,6 +157,8 @@ const slug_vertex = `
 
     vGlyphBandScale = aGlyphBandScale;
     vBandMaxTexCoords = uvec4(aBandMaxTexCoords);
+    vGlyphColor = aGlyphColor;
+    vGlyphParams = aGlyphParams;
 `;
 
 export function injectSlug(
@@ -241,7 +251,7 @@ out vec4 fragColor;
 
 void main() {
 ${slug_fragment_core}
-    fragColor = vec4(1.0, 0.8, 0.0, slugAlpha);
+    fragColor = vec4(vGlyphColor.rgb, slugAlpha * vGlyphColor.a);
 }
 `;
 
