@@ -137,6 +137,24 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     this.computeBoundingSphere();
   }
 
+  private getKerningAdjustment(
+    slugData: SlugLoaderData,
+    leftCodePoint: number,
+    rightCodePoint: number,
+  ): number {
+    if (leftCodePoint < 0 || rightCodePoint < 0) return 0;
+
+    if (slugData.getKerning) {
+      return slugData.getKerning(leftCodePoint, rightCodePoint) || 0;
+    }
+
+    if (slugData.kerningPairs) {
+      return slugData.kerningPairs.get(`${leftCodePoint}:${rightCodePoint}`) || 0;
+    }
+
+    return 0;
+  }
+
   addText(
     text: string,
     slugData: SlugLoaderData,
@@ -161,6 +179,7 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
 
     for (const line of lines) {
       let lineWidth = 0;
+      let previousCodePoint: number | null = null;
 
       let cursor = 0;
       while (cursor < line.length) {
@@ -168,11 +187,19 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
         cursor += charCode > 0xffff ? 2 : 1;
         const data =
           slugData.codePoints.get(charCode) || slugData.codePoints.get(-1);
+
+        const kerning =
+          previousCodePoint === null
+            ? 0
+            : this.getKerningAdjustment(slugData, previousCodePoint, charCode);
+
         if (data) {
-          lineWidth += data.advanceWidth * fontScale;
+          lineWidth += (kerning + data.advanceWidth) * fontScale;
         } else if (line[cursor - 1] === " ") {
-          lineWidth += 600 * fontScale;
+          lineWidth += (kerning + 600) * fontScale;
         }
+
+        previousCodePoint = charCode;
       }
 
       let currentX = startX;
@@ -180,11 +207,19 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
       else if (justify === "right") currentX -= lineWidth;
 
       let index = 0;
+      previousCodePoint = null;
       while (index < line.length) {
         const charCode = line.codePointAt(index) ?? 0;
         index += charCode > 0xffff ? 2 : 1;
         const data =
           slugData.codePoints.get(charCode) || slugData.codePoints.get(-1);
+
+        const kerning =
+          previousCodePoint === null
+            ? 0
+            : this.getKerningAdjustment(slugData, previousCodePoint, charCode);
+
+        currentX += kerning * fontScale;
 
         if (data) {
           if (data.width > 0 && data.height > 0) {
@@ -198,6 +233,8 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
         } else if (line[index - 1] === " ") {
           currentX += 600 * fontScale;
         }
+
+        previousCodePoint = charCode;
       }
 
       currentY -= lineHeight;

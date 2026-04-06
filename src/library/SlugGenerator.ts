@@ -5,6 +5,17 @@ import type {
   SlugGeneratorParameters,
 } from "./types";
 
+type OpentypeGlyph = unknown;
+type OpentypeFontLike = {
+  glyphs: { length: number; get: (index: number) => any };
+  ascender?: number;
+  descender?: number;
+  lineGap?: number;
+  unitsPerEm?: number;
+  charToGlyph: (char: string) => OpentypeGlyph;
+  getKerningValue: (leftGlyph: OpentypeGlyph, rightGlyph: OpentypeGlyph) => number;
+};
+
 const TEXTURE_WIDTH = 4096;
 const SLUGGISH_HEADER_DATA = "SLUGGISH";
 
@@ -39,7 +50,7 @@ export class SlugGenerator {
     return this.generate(font);
   }
 
-  generate(font: any): SlugGeneratedData {
+  generate(font: OpentypeFontLike): SlugGeneratedData {
     let ignoredCodePoints = 0;
     const curvesTexData: number[] = [];
     const bandsTexBandOffsets: number[] = [];
@@ -315,7 +326,7 @@ export class SlugGenerator {
     curvesList: number[],
     bandOffsets: number[],
     curveOffsets: number[],
-    font: any,
+    font: OpentypeFontLike,
   ): SlugGeneratedData {
     const map = new Map<number, SlugCodePointData>();
     codePoints.forEach((codePointData) =>
@@ -368,6 +379,33 @@ export class SlugGenerator {
     const lineGap = font.lineGap || 0;
     const unitsPerEm = font.unitsPerEm || 0;
 
+    const kerningPairs = new Map<string, number>();
+    const glyphCache = new Map<number, OpentypeGlyph>();
+
+    const getKerning = (leftCodePoint: number, rightCodePoint: number): number => {
+      if (leftCodePoint < 0 || rightCodePoint < 0) return 0;
+
+      const key = `${leftCodePoint}:${rightCodePoint}`;
+      const cached = kerningPairs.get(key);
+      if (cached !== undefined) return cached;
+
+      let leftGlyph = glyphCache.get(leftCodePoint);
+      if (!leftGlyph) {
+        leftGlyph = font.charToGlyph(String.fromCodePoint(leftCodePoint));
+        glyphCache.set(leftCodePoint, leftGlyph);
+      }
+
+      let rightGlyph = glyphCache.get(rightCodePoint);
+      if (!rightGlyph) {
+        rightGlyph = font.charToGlyph(String.fromCodePoint(rightCodePoint));
+        glyphCache.set(rightCodePoint, rightGlyph);
+      }
+
+      const kerning = font.getKerningValue(leftGlyph, rightGlyph) || 0;
+      kerningPairs.set(key, kerning);
+      return kerning;
+    };
+
     return {
       codePoints: map,
       curvesTex,
@@ -376,6 +414,8 @@ export class SlugGenerator {
       descender,
       lineGap,
       unitsPerEm,
+      kerningPairs,
+      getKerning,
       _raw: {
         codePoints,
         curvesList,

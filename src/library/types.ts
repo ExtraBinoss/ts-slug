@@ -36,6 +36,8 @@ export interface SlugGeneratedData {
   descender: number;
   lineGap: number;
   unitsPerEm: number;
+  kerningPairs?: Map<string, number>;
+  getKerning?: (leftCodePoint: number, rightCodePoint: number) => number;
   _raw: SlugGeneratedRawData;
 }
 
@@ -47,6 +49,8 @@ export interface SlugLoaderData {
   descender: number;
   lineGap: number;
   unitsPerEm: number;
+  kerningPairs?: Map<string, number>;
+  getKerning?: (leftCodePoint: number, rightCodePoint: number) => number;
 }
 
 export interface SlugGeneratorParameters {
