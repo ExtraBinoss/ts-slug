@@ -191,6 +191,100 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     return 0;
   }
 
+  private computeAdvanceWidth(
+    slugData: SlugLoaderData,
+    text: string,
+    fontScale: number,
+  ): number {
+    let width = 0;
+    let previousCodePoint: number | null = null;
+    let index = 0;
+
+    while (index < text.length) {
+      const charCode = text.codePointAt(index) ?? 0;
+      index += charCode > 0xffff ? 2 : 1;
+      const data =
+        slugData.codePoints.get(charCode) || slugData.codePoints.get(-1);
+      const kerning =
+        previousCodePoint === null
+          ? 0
+          : this.getKerningAdjustment(slugData, previousCodePoint, charCode);
+
+      if (data) {
+        width += (kerning + data.advanceWidth) * fontScale;
+      } else if (text[index - 1] === " ") {
+        width += (kerning + 600) * fontScale;
+      }
+
+      previousCodePoint = charCode;
+    }
+
+    return width;
+  }
+
+  private wrapLine(
+    line: string,
+    slugData: SlugLoaderData,
+    fontScale: number,
+    maxWidth: number,
+    wrapMode: "word" | "char",
+  ): string[] {
+    if (maxWidth <= 0) return [line];
+
+    if (wrapMode === "char") {
+      const wrappedLines: string[] = [];
+      let currentLine = "";
+      let currentWidth = 0;
+
+      for (const char of Array.from(line)) {
+        const charWidth = this.computeAdvanceWidth(slugData, char, fontScale);
+        if (currentLine.length > 0 && currentWidth + charWidth > maxWidth) {
+          wrappedLines.push(currentLine);
+          currentLine = char;
+          currentWidth = charWidth;
+        } else {
+          currentLine += char;
+          currentWidth += charWidth;
+        }
+      }
+
+      if (currentLine.length > 0) wrappedLines.push(currentLine);
+      return wrappedLines.length > 0 ? wrappedLines : [""];
+    }
+
+    const tokens = line.match(/\S+|\s+/g) || [""];
+    const wrappedLines: string[] = [];
+    let currentLine = "";
+    let currentWidth = 0;
+
+    for (const token of tokens) {
+      const tokenWidth = this.computeAdvanceWidth(slugData, token, fontScale);
+      const trimmedToken = token.trim();
+      const isWhitespace = trimmedToken.length === 0;
+
+      if (
+        currentLine.length > 0 &&
+        currentWidth + tokenWidth > maxWidth &&
+        !isWhitespace
+      ) {
+        wrappedLines.push(currentLine.trimEnd());
+        currentLine = token.trimStart();
+        currentWidth = this.computeAdvanceWidth(
+          slugData,
+          currentLine,
+          fontScale,
+        );
+        continue;
+      }
+
+      currentLine += token;
+      currentWidth += tokenWidth;
+    }
+
+    if (currentLine.trim().length > 0) wrappedLines.push(currentLine.trimEnd());
+    return wrappedLines.length > 0 ? wrappedLines : [""];
+  }
+
   addText(
     text: string,
     slugData: SlugLoaderData,
@@ -208,6 +302,9 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
       startX = 0,
       startY = 0,
       justify = "left",
+      maxWidth = 0,
+      wrap = false,
+      wrapMode = "word",
       glyphStyle,
     } = options;
 
@@ -234,7 +331,25 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
       return glyphStyle;
     };
 
+    const layoutLines: Array<{ text: string; sourceLineIndex: number }> = [];
     lines.forEach((line, lineIndex) => {
+      if (wrap || maxWidth > 0) {
+        const wrapped = this.wrapLine(
+          line,
+          slugData,
+          fontScale,
+          maxWidth,
+          wrapMode,
+        );
+        wrapped.forEach((wrappedLine) =>
+          layoutLines.push({ text: wrappedLine, sourceLineIndex: lineIndex }),
+        );
+      } else {
+        layoutLines.push({ text: line, sourceLineIndex: lineIndex });
+      }
+    });
+
+    layoutLines.forEach(({ text: line, sourceLineIndex: lineIndex }) => {
       let lineWidth = 0;
       let previousCodePoint: number | null = null;
 

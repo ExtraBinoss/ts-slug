@@ -76,10 +76,24 @@ export interface SlugTextOptions {
   startX?: number;
   startY?: number;
   justify?: "left" | "center" | "right";
+  maxWidth?: number;
+  wrap?: boolean;
+  wrapMode?: "word" | "char";
   glyphStyle?: SlugGlyphStyle | SlugGlyphStyleResolver;
 }
 
 export interface SlugMaterialParameters {
   curvesTex?: THREE.DataTexture | null;
   bandsTex?: THREE.DataTexture | null;
+}
+
+export interface SlugShaderEffect {
+  name: string;
+  uniforms?: Record<string, THREE.IUniform | { value: unknown }>;
+  vertex?: string;
+  fragment?: string;
+}
+
+export interface SlugInjectionOptions {
+  effects?: SlugShaderEffect[];
 }

@@ -1,5 +1,9 @@
 import * as THREE from "three";
-import type { SlugMaterialParameters } from "./types";
+import type {
+  SlugInjectionOptions,
+  SlugMaterialParameters,
+  SlugShaderEffect,
+} from "./types";
 
 const slug_pars_fragment = `
 precision highp int;
@@ -10,6 +14,7 @@ flat in vec4 vGlyphBandScale;
 flat in uvec4 vBandMaxTexCoords;
 flat in vec4 vGlyphColor;
 flat in vec4 vGlyphParams;
+flat in float vGlyphInstance;
 
 uniform sampler2D curvesTex;
 uniform usampler2D bandsTex;
@@ -93,6 +98,11 @@ float TraceRayBandV(uvec2 bandData, float pixelsPerEm)
     }
     return coverage;
 }
+
+vec3 rainbowColor(float phase)
+{
+  return 0.5 + 0.5 * cos(6.2831853 * (phase + vec3(0.0, 0.33, 0.67)));
+}
 `;
 
 const slug_fragment_core = `
@@ -122,7 +132,8 @@ const slug_fragment_core = `
 const slug_fragment_standard =
   slug_fragment_core +
   `
-    diffuseColor.rgb *= vGlyphColor.rgb;
+    vec3 effectColor = mix(vGlyphColor.rgb, rainbowColor(vGlyphParams.x), clamp(vGlyphParams.w, 0.0, 1.0));
+    diffuseColor.rgb *= effectColor;
     diffuseColor.a *= vGlyphColor.a;
     diffuseColor.a *= slugAlpha;
     if ( diffuseColor.a < 0.0001 ) discard;
@@ -140,11 +151,15 @@ flat out vec4 vGlyphBandScale;
 flat out uvec4 vBandMaxTexCoords;
 flat out vec4 vGlyphColor;
 flat out vec4 vGlyphParams;
+flat out float vGlyphInstance;
 `;
 
 const slug_vertex = `
     vec3 transformed = vec3( position.xy * aScaleBias.xy + aScaleBias.zw, 0.0 );
     vTexCoords = position.xy * 0.5 + 0.5;
+
+  float waveOffset = sin((position.y + aGlyphParams.x) * max(aGlyphParams.y, 0.0001)) * aGlyphParams.z;
+  transformed.x += waveOffset;
     
     #ifdef SLUG_MODELSPACE_UV
     #ifdef USE_UV
@@ -159,14 +174,106 @@ const slug_vertex = `
     vBandMaxTexCoords = uvec4(aBandMaxTexCoords);
     vGlyphColor = aGlyphColor;
     vGlyphParams = aGlyphParams;
+    vGlyphInstance = float(gl_InstanceID);
 `;
+
+function buildEffectUniforms(
+  effects: SlugShaderEffect[],
+): Record<string, THREE.IUniform> {
+  const uniforms: Record<string, THREE.IUniform> = {};
+
+  for (const effect of effects) {
+    if (!effect.uniforms) continue;
+    for (const [name, uniform] of Object.entries(effect.uniforms)) {
+      if (uniform && typeof uniform === "object" && "value" in uniform) {
+        uniforms[name] = uniform as THREE.IUniform;
+      } else {
+        uniforms[name] = { value: uniform };
+      }
+    }
+  }
+
+  return uniforms;
+}
+
+function buildEffectSnippet(
+  effects: SlugShaderEffect[],
+  key: "vertex" | "fragment",
+): string {
+  return effects
+    .map((effect) => effect[key]?.trim())
+    .filter((snippet): snippet is string => Boolean(snippet))
+    .join("\n");
+}
+
+function glslTypeFromUniformValue(value: unknown): string {
+  if (typeof value === "boolean") return "bool";
+  if (typeof value === "number") return "float";
+  if (Array.isArray(value)) {
+    if (value.length === 2) return "vec2";
+    if (value.length === 3) return "vec3";
+    if (value.length === 4) return "vec4";
+  }
+  return "float";
+}
+
+function buildEffectUniformDeclarations(effects: SlugShaderEffect[]): string {
+  const declarations = new Map<string, string>();
+
+  for (const effect of effects) {
+    if (!effect.uniforms) continue;
+    for (const [name, uniform] of Object.entries(effect.uniforms)) {
+      const value =
+        uniform && typeof uniform === "object" && "value" in uniform
+          ? (uniform as { value: unknown }).value
+          : uniform;
+      declarations.set(name, glslTypeFromUniformValue(value));
+    }
+  }
+
+  declarations.set("uSlugTime", "float");
+
+  return Array.from(declarations.entries())
+    .map(([name, type]) => `uniform ${type} ${name};`)
+    .join("\n");
+}
+
+function applyStandardMaterialEffects(
+  shader: any,
+  effects: SlugShaderEffect[],
+): void {
+  const vertexSnippet = buildEffectSnippet(effects, "vertex");
+  const fragmentSnippet = buildEffectSnippet(effects, "fragment");
+
+  if (Object.keys(buildEffectUniforms(effects)).length > 0) {
+    shader.uniforms = {
+      ...shader.uniforms,
+      ...buildEffectUniforms(effects),
+    };
+  }
+
+  shader.vertexShader = shader.vertexShader.replace(
+    "#include <begin_vertex>",
+    vertexSnippet ? `${slug_vertex}\n${vertexSnippet}` : slug_vertex,
+  );
+
+  shader.fragmentShader = shader.fragmentShader.replace(
+    "#include <alphatest_fragment>",
+    `${slug_fragment_standard}${fragmentSnippet ? `\n${fragmentSnippet}` : ""}\n#include <alphatest_fragment>`,
+  );
+}
 
 export function injectSlug(
   target: THREE.Mesh,
   material: THREE.Material,
   slugData: any,
+  options?: SlugInjectionOptions,
 ): void;
-export function injectSlug(target: THREE.Material, slugData: any): void;
+export function injectSlug(
+  target: THREE.Material,
+  slugData: any,
+  options?: SlugInjectionOptions,
+): void;
 export function injectSlug(
   target: THREE.Mesh | THREE.Material,
   ...args: any[]
@@ -175,9 +282,10 @@ export function injectSlug(
     const mesh = target as THREE.Mesh;
     const material = args[0] as THREE.Material;
     const slugData = args[1];
+    const options = args[2] as SlugInjectionOptions | undefined;
 
     mesh.material = material;
-    injectSlug(material, slugData);
+    injectSlug(material, slugData, options);
 
     if ((material as any).isRawShaderMaterial) return;
 
@@ -207,6 +315,9 @@ export function injectSlug(
     alphaTest?: number;
   };
   const slugData = args[0];
+  const options = args[1] as SlugInjectionOptions | undefined;
+  const effects = options?.effects || [];
+  const effectUniformDeclarations = buildEffectUniformDeclarations(effects);
 
   if (material.userData && material.userData.slugInjected) return;
 
@@ -216,26 +327,26 @@ export function injectSlug(
   material.onBeforeCompile = (shader: any) => {
     shader.uniforms.curvesTex = { value: slugData.curvesTex };
     shader.uniforms.bandsTex = { value: slugData.bandsTex };
+    shader.uniforms.uSlugTime = { value: 0 };
 
     shader.vertexShader = shader.vertexShader.replace(
       "#include <clipping_planes_pars_vertex>",
-      "#include <clipping_planes_pars_vertex>\n" + slug_pars_vertex,
+      "#include <clipping_planes_pars_vertex>\n" +
+        slug_pars_vertex +
+        (effectUniformDeclarations ? `\n${effectUniformDeclarations}` : ""),
     );
 
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <begin_vertex>",
-      slug_vertex,
-    );
+    applyStandardMaterialEffects(shader, effects);
 
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <clipping_planes_pars_fragment>",
-      "#include <clipping_planes_pars_fragment>\n" + slug_pars_fragment,
+      "#include <clipping_planes_pars_fragment>\n" +
+        slug_pars_fragment +
+        (effectUniformDeclarations ? `\n${effectUniformDeclarations}` : ""),
     );
 
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <alphatest_fragment>",
-      slug_fragment_standard + "\n#include <alphatest_fragment>",
-    );
+    material.userData = material.userData || {};
+    material.userData.slugRuntimeUniforms = shader.uniforms;
   };
 
   material.userData = material.userData || {};
@@ -251,7 +362,8 @@ out vec4 fragColor;
 
 void main() {
 ${slug_fragment_core}
-    fragColor = vec4(vGlyphColor.rgb, slugAlpha * vGlyphColor.a);
+  vec3 effectColor = mix(vGlyphColor.rgb, rainbowColor(vGlyphParams.x), clamp(vGlyphParams.w, 0.0, 1.0));
+  fragColor = vec4(effectColor, slugAlpha * vGlyphColor.a);
 }
 `;
 
