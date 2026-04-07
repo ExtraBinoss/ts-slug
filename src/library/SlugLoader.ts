@@ -1,7 +1,7 @@
-import * as THREE from 'three';
-import type { SlugLoaderData } from './types';
+import * as THREE from "three";
+import type { SlugLoaderData } from "./types";
 
-const SLUGGISH_HEADER_DATA = 'SLUGGISH';
+const SLUGGISH_HEADER_DATA = "SLUGGISH";
 const TEXTURE_WIDTH = 4096;
 
 type ParsedCodePoint = {
@@ -22,7 +22,8 @@ export class SlugLoader {
   manager: THREE.LoadingManager;
 
   constructor(manager?: THREE.LoadingManager) {
-    this.manager = manager !== undefined ? manager : THREE.DefaultLoadingManager;
+    this.manager =
+      manager !== undefined ? manager : THREE.DefaultLoadingManager;
   }
 
   load(
@@ -32,7 +33,7 @@ export class SlugLoader {
     onError?: (error: unknown) => void,
   ): void {
     const loader = new THREE.FileLoader(this.manager);
-    loader.setResponseType('arraybuffer');
+    loader.setResponseType("arraybuffer");
     loader.load(
       url,
       (buffer) => {
@@ -55,7 +56,9 @@ export class SlugLoader {
     const headerBytes = new Uint8Array(buffer, offset, 8);
     const headerStr = String.fromCharCode(...headerBytes);
     if (headerStr !== SLUGGISH_HEADER_DATA) {
-      throw new Error(`Invalid header found (${headerStr} instead of ${SLUGGISH_HEADER_DATA})`);
+      throw new Error(
+        `Invalid header found (${headerStr} instead of ${SLUGGISH_HEADER_DATA})`,
+      );
     }
     offset += 8;
 
@@ -78,10 +81,11 @@ export class SlugLoader {
     };
 
     const useExtended40 = looksLikeTextureHeaderAt(cpTable40End);
-    const useCompact28 = !useExtended40 && looksLikeTextureHeaderAt(cpTable28End);
+    const useCompact28 =
+      !useExtended40 && looksLikeTextureHeaderAt(cpTable28End);
 
     if (!useExtended40 && !useCompact28) {
-      throw new Error('Unsupported codepoint table layout in sluggish file');
+      throw new Error("Unsupported codepoint table layout in sluggish file");
     }
 
     if (useExtended40) {
@@ -127,16 +131,17 @@ export class SlugLoader {
       }
 
       for (let index = 0; index < compactRecords.length; index++) {
-        const record = compactRecords[index];
+        const record = compactRecords[index]!;
         let bandCount = 16;
 
         if (index < compactRecords.length - 1) {
-          const delta = compactRecords[index + 1].bandTexelIndex - record.bandTexelIndex;
+          const nextRecord = compactRecords[index + 1]!;
+          const delta = nextRecord.bandTexelIndex - record.bandTexelIndex;
           if (delta > 0 && delta % 2 === 0) {
             bandCount = Math.max(1, delta / 2);
           }
         } else if (compactRecords.length > 1) {
-          const prev = compactRecords[index - 1];
+          const prev = compactRecords[index - 1]!;
           const delta = record.bandTexelIndex - prev.bandTexelIndex;
           if (delta > 0 && delta % 2 === 0) {
             bandCount = Math.max(1, delta / 2);
@@ -171,8 +176,13 @@ export class SlugLoader {
     const curvesTexBytes = dataView.getUint32(offset, true);
     offset += 4;
 
-    if (curvesTexWidth === 0 || curvesTexHeight === 0 || curvesTexBytes === 0 || curvesTexWidth !== TEXTURE_WIDTH) {
-      throw new Error('Invalid curves texture dimensions');
+    if (
+      curvesTexWidth === 0 ||
+      curvesTexHeight === 0 ||
+      curvesTexBytes === 0 ||
+      curvesTexWidth !== TEXTURE_WIDTH
+    ) {
+      throw new Error("Invalid curves texture dimensions");
     }
 
     const curvesTexels = curvesTexWidth * curvesTexHeight;
@@ -188,8 +198,13 @@ export class SlugLoader {
     const bandsTexBytes = dataView.getUint32(offset, true);
     offset += 4;
 
-    if (bandsTexWidth === 0 || bandsTexHeight === 0 || bandsTexBytes === 0 || bandsTexWidth !== TEXTURE_WIDTH) {
-      throw new Error('Invalid bands texture dimensions');
+    if (
+      bandsTexWidth === 0 ||
+      bandsTexHeight === 0 ||
+      bandsTexBytes === 0 ||
+      bandsTexWidth !== TEXTURE_WIDTH
+    ) {
+      throw new Error("Invalid bands texture dimensions");
     }
 
     const bandsTexels = bandsTexWidth * bandsTexHeight;
@@ -213,14 +228,26 @@ export class SlugLoader {
       offset += 4;
     }
 
-    const curvesTex = new THREE.DataTexture(curvesData, curvesTexWidth, curvesTexHeight, THREE.RGBAFormat, THREE.FloatType);
-    (curvesTex as any).internalFormat = 'RGBA32F';
+    const curvesTex = new THREE.DataTexture(
+      curvesData,
+      curvesTexWidth,
+      curvesTexHeight,
+      THREE.RGBAFormat,
+      THREE.FloatType,
+    );
+    (curvesTex as any).internalFormat = "RGBA32F";
     curvesTex.minFilter = THREE.NearestFilter;
     curvesTex.magFilter = THREE.NearestFilter;
     curvesTex.needsUpdate = true;
 
-    const bandsTex = new THREE.DataTexture(bandsData, bandsTexWidth, bandsTexHeight, THREE.RGIntegerFormat, THREE.UnsignedIntType);
-    (bandsTex as any).internalFormat = 'RG32UI';
+    const bandsTex = new THREE.DataTexture(
+      bandsData,
+      bandsTexWidth,
+      bandsTexHeight,
+      THREE.RGIntegerFormat,
+      THREE.UnsignedIntType,
+    );
+    (bandsTex as any).internalFormat = "RG32UI";
     bandsTex.minFilter = THREE.NearestFilter;
     bandsTex.magFilter = THREE.NearestFilter;
     bandsTex.needsUpdate = true;

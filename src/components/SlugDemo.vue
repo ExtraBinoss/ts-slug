@@ -64,6 +64,14 @@ const slugGenerator = new SlugGenerator({ fullRange: true });
 const slugLoader = new SlugLoader();
 const generatedCache = new Map<string, RenderSlugData>();
 const importedCache = new Map<string, RenderSlugData>();
+const publicAssetBase = import.meta.env.BASE_URL;
+
+function getPublicAssetUrl(path: string): string {
+  const normalizedBase = publicAssetBase.endsWith("/")
+    ? publicAssetBase
+    : `${publicAssetBase}/`;
+  return `${normalizedBase}${path.replace(/^\//, "")}`;
+}
 
 function applySceneBackground(): void {
   if (!scene || !renderer) return;
@@ -192,7 +200,9 @@ async function loadSelectedFont(): Promise<void> {
   }
 
   slugGenerator
-    .generateFromUrl(`/fonts/${selectedFont.value}`)
+    .generateFromUrl(
+      getPublicAssetUrl(`fonts/${encodeURIComponent(selectedFont.value)}`),
+    )
     .then((slugData) => {
       if (currentTicket !== loadTicket) return;
       generatedCache.set(selectedFont.value, slugData);
@@ -249,7 +259,9 @@ async function loadSelectedSluggishSource(): Promise<void> {
     }
 
     try {
-      const response = await fetch(`/fonts/${sourceName}`);
+      const response = await fetch(
+        getPublicAssetUrl(`fonts/${encodeURIComponent(sourceName)}`),
+      );
       if (!response.ok) {
         throw new Error(`Unable to fetch ${sourceName}`);
       }
@@ -344,7 +356,7 @@ onMounted(async () => {
   resize();
 
   try {
-    const response = await fetch("/fonts/fonts.json");
+    const response = await fetch(getPublicAssetUrl("fonts/fonts.json"));
     const fonts = (await response.json()) as string[];
     availableFonts.value = fonts.filter((name) =>
       name.toLowerCase().endsWith(".ttf"),
@@ -628,6 +640,22 @@ onBeforeUnmount(() => {
         <p>geometries: {{ renderInfo.geometries }}</p>
         <p>textures: {{ renderInfo.textures }}</p>
       </div>
+
+      <div class="credits">
+        <p class="credits-title">Credits</p>
+        <p>
+          Original project:
+          <a
+            href="https://github.com/manthrax/JSlug"
+            target="_blank"
+            rel="noreferrer"
+          >
+            manthrax/JSlug
+          </a>
+          . Slug itself is credited by that project to Eric Lengyel, and this
+          port also leans on opentype.js and Three.js.
+        </p>
+      </div>
     </aside>
   </section>
 </template>
@@ -769,6 +797,33 @@ textarea {
   font-size: 0.74rem;
   line-height: 1.25;
   color: rgba(234, 244, 255, 0.94);
+}
+
+.credits {
+  margin-top: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 175, 255, 0.25);
+  background: rgba(2, 7, 12, 0.5);
+}
+
+.credits-title {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  color: #8cb2ff;
+}
+
+.credits p:last-child {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(234, 244, 255, 0.9);
+}
+
+.credits a {
+  color: #9ec0ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 @media (max-width: 640px) {

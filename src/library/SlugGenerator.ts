@@ -312,7 +312,7 @@ export class SlugGenerator {
 
     const bandHeaderTexels = Math.floor(bandsTexBandOffsets.length / 2);
     for (let index = 1; index < bandsTexBandOffsets.length; index += 2) {
-      bandsTexBandOffsets[index] += bandHeaderTexels;
+      bandsTexBandOffsets[index]! += bandHeaderTexels;
     }
 
     return this.buildOutput(

@@ -393,8 +393,12 @@ export class SlugMaterial extends THREE.RawShaderMaterial {
       glslVersion: THREE.GLSL3,
     });
 
-    if (parameters.curvesTex)
-      this.uniforms.curvesTex.value = parameters.curvesTex;
-    if (parameters.bandsTex) this.uniforms.bandsTex.value = parameters.bandsTex;
+    const uniforms = this.uniforms as {
+      curvesTex: THREE.IUniform;
+      bandsTex: THREE.IUniform;
+    };
+
+    if (parameters.curvesTex) uniforms.curvesTex.value = parameters.curvesTex;
+    if (parameters.bandsTex) uniforms.bandsTex.value = parameters.bandsTex;
   }
 }

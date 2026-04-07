@@ -6,21 +6,22 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "build:lib": "npm --prefix src/library run build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@types/opentype.js": "^1.3.9",
     "opentype.js": "^1.3.4",
-    "three": "^0.183.2",
-    "vue": "^3.5.32"
+    "three": "^0.183.2"
   },
   "devDependencies": {
+    "@types/opentype.js": "^1.3.9",
     "@types/node": "^24.12.2",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
     "vite": "^8.0.4",
+    "vue": "^3.5.32",
     "vue-tsc": "^3.2.6"
   }
 }
