@@ -2,45 +2,21 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { SlugGenerator, SlugLoader } from "../library";
 import {
-  SlugGeometry,
-  SlugGenerator,
-  SlugMaterial,
-  injectSlug,
-  type SlugGeneratedData,
-  type SlugGlyphStyle,
-  type SlugShaderEffect,
-  type SlugLoaderData,
-} from "../library";
-
-type TabId = "playground" | "benchmark" | "effects";
-type CameraMode = "2d" | "orbit";
-type MaterialMode = "slug" | "standard";
-
-type RenderSlugData = SlugLoaderData | SlugGeneratedData;
-
-type SceneMeshSpec = {
-  text: string;
-  x: number;
-  y: number;
-  fontScale: number;
-  lineHeightFactor?: number;
-  maxWidth?: number;
-  wrap?: boolean;
-  wrapMode?: "word" | "char";
-  color?: [number, number, number, number];
-  params?: [number, number, number, number];
-  styleResolver?: (
-    codePoint: number,
-    lineIndex: number,
-    glyphIndex: number,
-    line: string,
-  ) => SlugGlyphStyle | null | undefined;
-  effects?: SlugShaderEffect[];
-  useStandard?: boolean;
-  scale?: number;
-  shadow?: { offsetX: number; offsetY: number; scale: number; opacity: number };
-};
+  buildBenchmarkScene,
+  buildEffectsScene,
+  buildPlaygroundScene,
+  clearScene,
+  disposeSceneRoot,
+  updateSlugRuntimeUniforms,
+} from "./slug-demo/sceneBuilders";
+import type {
+  CameraMode,
+  MaterialMode,
+  RenderSlugData,
+  TabId,
+} from "./slug-demo/types";
 
 const host = ref<HTMLDivElement | null>(null);
 const status = ref("Initializing renderer...");
@@ -49,12 +25,19 @@ const fontScale = ref(0.14);
 const lineSpacing = ref(1.15);
 const cameraMode = ref<CameraMode>("2d");
 const activeTab = ref<TabId>("playground");
+const sourceMode = ref<"ttf" | "sluggish">("ttf");
 const materialMode = ref<MaterialMode>("slug");
 const backgroundColor = ref("#e9edf2");
 const usePageBackground = ref(false);
 const selectedFont = ref("SpaceMono-Regular.ttf");
 const availableFonts = ref<string[]>([]);
+const selectedSluggishSource = ref("custom");
+const availableSluggishSources = ref<string[]>([]);
+const customSluggishFile = ref<File | null>(null);
 const renderInfo = ref({
+  fps: 0,
+  avgFps: 0,
+  low1Fps: 0,
   calls: 0,
   triangles: 0,
   lines: 0,
@@ -72,9 +55,15 @@ let animationFrame = 0;
 let loadedSlugData: RenderSlugData | null = null;
 let loadTicket = 0;
 let frameCounter = 0;
+let lastFrameTime = 0;
 let sceneRoot: THREE.Group | null = null;
+const fpsSamples: number[] = [];
+const maxFpsSamples = 600;
+
 const slugGenerator = new SlugGenerator({ fullRange: true });
+const slugLoader = new SlugLoader();
 const generatedCache = new Map<string, RenderSlugData>();
+const importedCache = new Map<string, RenderSlugData>();
 
 function applySceneBackground(): void {
   if (!scene || !renderer) return;
@@ -87,108 +76,6 @@ function applySceneBackground(): void {
 
   scene.background = new THREE.Color(backgroundColor.value);
   renderer.setClearColor(backgroundColor.value, 1);
-}
-
-function createSeededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state += 0x6d2b79f5;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function createWaveEffect(
-  name: string,
-  phase: number,
-  frequency: number,
-  amplitude: number,
-): SlugShaderEffect {
-  return {
-    name,
-    uniforms: {
-      uWavePhase: { value: phase },
-      uWaveFrequency: { value: frequency },
-      uWaveAmplitude: { value: amplitude },
-    },
-    vertex: `
-      float slugWaveSeed = aScaleBias.z * 0.03 + aScaleBias.w * 0.017;
-      transformed.y += sin(slugWaveSeed + uSlugTime * max(uWaveFrequency, 0.0001) + uWavePhase) * uWaveAmplitude;
-    `,
-  };
-}
-
-function createRainbowEffect(
-  name: string,
-  mix: number,
-  phase: number,
-): SlugShaderEffect {
-  return {
-    name,
-    uniforms: {
-      uRainbowMix: { value: mix },
-      uRainbowPhase: { value: phase },
-    },
-    fragment: `
-      vec3 slugRainbow = rainbowColor(vGlyphInstance * 0.07 + uSlugTime * 0.25 + uRainbowPhase + vGlyphParams.x);
-      diffuseColor.rgb = mix(diffuseColor.rgb, slugRainbow, clamp(uRainbowMix, 0.0, 1.0));
-    `,
-  };
-}
-
-function createPulseEffect(
-  name: string,
-  strength: number,
-  phase: number,
-): SlugShaderEffect {
-  return {
-    name,
-    uniforms: {
-      uPulseStrength: { value: strength },
-      uPulsePhase: { value: phase },
-    },
-    fragment: `
-      float slugPulse = 0.5 + 0.5 * sin(uPulsePhase + uSlugTime * 2.0 + vGlyphInstance * 0.05 + vGlyphParams.x * 0.02);
-      diffuseColor.rgb *= 1.0 + slugPulse * uPulseStrength;
-      diffuseColor.a *= 1.0 + 0.15 * slugPulse * uPulseStrength;
-    `,
-  };
-}
-
-function disposeObject(object: THREE.Object3D): void {
-  object.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (mesh.geometry) mesh.geometry.dispose();
-    if (Array.isArray(mesh.material)) {
-      for (const material of mesh.material) material.dispose();
-    } else if (mesh.material) {
-      mesh.material.dispose();
-    }
-  });
-}
-
-function clearScene(): void {
-  const currentScene = scene;
-  if (!currentScene) return;
-  if (sceneRoot) {
-    currentScene.remove(sceneRoot);
-    disposeObject(sceneRoot);
-  }
-  sceneRoot = new THREE.Group();
-  currentScene.add(sceneRoot);
-}
-
-function addToScene(object: THREE.Object3D): void {
-  if (sceneRoot) sceneRoot.add(object);
-}
-
-function disposeCurrentScene(): void {
-  if (!sceneRoot || !scene) return;
-  scene.remove(sceneRoot);
-  disposeObject(sceneRoot);
-  sceneRoot = null;
 }
 
 function resize(): void {
@@ -250,375 +137,50 @@ function setupCameraAndControls(): void {
   resize();
 }
 
-function getGlyphData(char: string) {
-  if (!loadedSlugData) return null;
-  const codePoint = char.codePointAt(0) ?? 0;
-  return (
-    loadedSlugData.codePoints.get(codePoint) ||
-    loadedSlugData.codePoints.get(-1) ||
-    null
-  );
-}
-
-function buildMaterial(
-  useStandard?: boolean,
-  effects: SlugShaderEffect[] = [],
-): THREE.Material {
-  if (!loadedSlugData) {
-    return new THREE.MeshBasicMaterial({ color: 0xffffff });
-  }
-
-  const shouldUseStandard =
-    effects.length > 0 || (useStandard ?? materialMode.value === "standard");
-
-  if (shouldUseStandard) {
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xffd37a,
-      roughness: 0.45,
-      metalness: 0.08,
-      side: THREE.DoubleSide,
-    });
-    injectSlug(material, loadedSlugData, { effects });
-    return material;
-  }
-
-  return new SlugMaterial({
-    curvesTex: loadedSlugData.curvesTex,
-    bandsTex: loadedSlugData.bandsTex,
-  });
-}
-
-function buildTextMesh(spec: SceneMeshSpec): THREE.Mesh | null {
-  if (!loadedSlugData) return null;
-
-  const glyphCapacity = Math.max(256, spec.text.length * 4);
-  const geometry = new SlugGeometry(glyphCapacity);
-
-  const baseLineHeight =
-    loadedSlugData.unitsPerEm > 0
-      ? loadedSlugData.ascender -
-        loadedSlugData.descender +
-        loadedSlugData.lineGap
-      : 2000;
-
-  geometry.addText(spec.text, loadedSlugData, {
-    fontScale: spec.fontScale,
-    lineHeight:
-      baseLineHeight *
-      (spec.lineHeightFactor ?? lineSpacing.value) *
-      spec.fontScale,
-    startX: 0,
-    startY: 0,
-    justify: "left",
-    maxWidth: spec.maxWidth,
-    wrap: spec.wrap,
-    wrapMode: spec.wrapMode,
-    glyphStyle:
-      spec.styleResolver ||
-      (spec.color || spec.params
-        ? {
-            color: spec.color || [1, 1, 1, 1],
-            params: spec.params || [0, 0, 0, 0],
-          }
-        : undefined),
-  });
-
-  const material = buildMaterial(spec.useStandard, spec.effects);
-  const mesh = new THREE.Mesh(geometry, material);
-  if (spec.scale !== undefined) mesh.scale.setScalar(spec.scale);
-  mesh.position.set(spec.x, spec.y, 0);
-
-  const box = geometry.boundingBox;
-  if (box && !box.isEmpty()) {
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    mesh.position.x += -center.x;
-    mesh.position.y += -center.y;
-  }
-
-  if (spec.shadow) {
-    const shadowMaterial = buildMaterial(spec.useStandard);
-    if (
-      shadowMaterial instanceof THREE.MeshStandardMaterial ||
-      shadowMaterial instanceof SlugMaterial
-    ) {
-      shadowMaterial.transparent = true;
-      (shadowMaterial as any).opacity = spec.shadow.opacity;
-      (shadowMaterial as any).depthWrite = false;
-    }
-    const shadowMesh = new THREE.Mesh(
-      new SlugGeometry(glyphCapacity),
-      shadowMaterial,
-    );
-    shadowMesh.position.copy(mesh.position);
-    shadowMesh.position.x += spec.shadow.offsetX;
-    shadowMesh.position.y += spec.shadow.offsetY;
-    shadowMesh.scale.setScalar(spec.shadow.scale);
-    (shadowMesh.geometry as SlugGeometry).addText(spec.text, loadedSlugData, {
-      fontScale: spec.fontScale,
-      lineHeight:
-        baseLineHeight *
-        (spec.lineHeightFactor ?? lineSpacing.value) *
-        spec.fontScale,
-      startX: 0,
-      startY: 0,
-      justify: "left",
-      maxWidth: spec.maxWidth,
-      wrap: spec.wrap,
-      wrapMode: spec.wrapMode,
-      glyphStyle: {
-        color: [0, 0, 0, 1],
-        params: [0, 0, 0, 0],
-      },
-    });
-    const shadowBox = shadowMesh.geometry.boundingBox;
-    if (shadowBox && !shadowBox.isEmpty()) {
-      const center = new THREE.Vector3();
-      shadowBox.getCenter(center);
-      shadowMesh.position.x += -center.x;
-      shadowMesh.position.y += -center.y;
-    }
-    addToScene(shadowMesh);
-  }
-
-  addToScene(mesh);
-  return mesh;
-}
-
-function buildBenchmarkScene(): void {
-  if (!scene || !loadedSlugData) return;
-  clearScene();
-
-  const ambient = new THREE.AmbientLight(0xffffff, 0.45);
-  const key = new THREE.DirectionalLight(0xfff1cf, 1.2);
-  key.position.set(2, 3, 5);
-  const rim = new THREE.DirectionalLight(0x75c8ff, 0.65);
-  rim.position.set(-4, -2, 3);
-  addToScene(ambient);
-  addToScene(key);
-  addToScene(rim);
-
-  const totalGlyphs = 100000;
-  const glyphCycle = [
-    "A",
-    "B",
-    "C",
-    "D",
-    "E",
-    "F",
-    "G",
-    "H",
-    "I",
-    "J",
-    "K",
-    "L",
-  ];
-  const geometry = new SlugGeometry(totalGlyphs);
-  const mapWidth = 9200;
-  const mapHeight = 5600;
-  const random = createSeededRandom(1337);
-
-  for (let index = 0; index < totalGlyphs; index++) {
-    const char = glyphCycle[index % glyphCycle.length];
-    const data = getGlyphData(char);
-    if (!data) continue;
-
-    const x = (random() - 0.5) * mapWidth;
-    const y = (random() - 0.5) * mapHeight;
-    const sizeJitter = 0.72 + random() * 0.24;
-    const glyphW = 13.5 * sizeJitter;
-    const glyphH = 16.0 * sizeJitter;
-
-    geometry.addGlyph(data, x, y, glyphW, glyphH, 0, 0, {
-      color: [
-        0.55 + 0.45 * Math.sin(index * 0.0007),
-        0.55 + 0.45 * Math.sin(index * 0.0011 + 1.0),
-        0.55 + 0.45 * Math.sin(index * 0.0015 + 2.0),
-        1,
-      ],
-      params: [index * 0.01, 8.0, 0.0, 0.0],
-    });
-  }
-
-  const material = buildMaterial(false);
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.z = 0;
-  addToScene(mesh);
-
-  buildTextMesh({
-    text: "100k glyph instances benchmark",
-    x: -620,
-    y: 470,
-    fontScale: 0.1,
-    color: [1, 1, 1, 1],
-    params: [0, 0, 0, 0],
-    useStandard: false,
-  });
-}
-
-function buildPlaygroundScene(): void {
-  if (!scene || !loadedSlugData) return;
-  clearScene();
-
-  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-  const key = new THREE.DirectionalLight(0xfff1cf, 1.4);
-  key.position.set(2, 3, 5);
-  const rim = new THREE.DirectionalLight(0x75c8ff, 0.8);
-  rim.position.set(-4, -2, 3);
-  addToScene(ambient);
-  addToScene(key);
-  addToScene(rim);
-
-  buildTextMesh({
-    text: inputText.value,
-    x: 0,
-    y: 0,
-    fontScale: fontScale.value,
-    lineHeightFactor: lineSpacing.value,
-    useStandard: materialMode.value === "standard",
-  });
-
-  buildTextMesh({
-    text: "Auto wrap box in the top-right. This is a constrained text block showing word wrapping and live layout with animation-friendly shader params.",
-    x: 420,
-    y: 260,
-    fontScale: 0.075,
-    maxWidth: 320,
-    wrap: true,
-    wrapMode: "word",
-    useStandard: materialMode.value === "standard",
-    color: [0.92, 0.96, 1.0, 1],
-    params: [0, 0, 0, 0.06],
-    shadow: { offsetX: 12, offsetY: -12, scale: 1.02, opacity: 0.35 },
-  });
-
-  buildTextMesh({
-    text: "Wavy text / rainbow mix / shadow / wrap / scale",
-    x: -460,
-    y: 290,
-    fontScale: 0.085,
-    maxWidth: 360,
-    wrap: true,
-    wrapMode: "word",
-    useStandard: true,
-    color: [1, 0.95, 0.75, 1],
-    effects: [
-      createWaveEffect("wave", frameCounter * 0.03, 15.0, 12.0),
-      createRainbowEffect("rainbow", 0.75, frameCounter * 0.01),
-      createPulseEffect("pulse", 0.18, frameCounter * 0.02),
-    ],
-    params: [1.0, 18.0, 0.0, 1.0],
-    shadow: { offsetX: 10, offsetY: -10, scale: 1.02, opacity: 0.28 },
-  });
-
-  buildTextMesh({
-    text: "Shadow block",
-    x: -520,
-    y: -250,
-    fontScale: 0.12,
-    useStandard: materialMode.value === "standard",
-    color: [0.98, 0.75, 0.3, 1],
-    params: [0, 0, 0, 0],
-    shadow: { offsetX: 24, offsetY: -24, scale: 1.04, opacity: 0.35 },
-  });
-}
-
-function buildEffectsScene(): void {
-  if (!scene || !loadedSlugData) return;
-  clearScene();
-
-  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-  const key = new THREE.DirectionalLight(0xfff1cf, 1.2);
-  key.position.set(2, 3, 5);
-  const rim = new THREE.DirectionalLight(0x75c8ff, 0.75);
-  rim.position.set(-4, -2, 3);
-  addToScene(ambient);
-  addToScene(key);
-  addToScene(rim);
-
-  const titles = [
-    "Effects canvas / infinite scroll",
-    "Rainbow wave",
-    "Auto wrap / shadow / scale",
-    "Offset / stacked / boxed",
-  ];
-
-  buildTextMesh({
-    text: titles[0],
-    x: -780,
-    y: 500,
-    fontScale: 0.12,
-    useStandard: true,
-    color: [1, 1, 1, 1],
-    params: [0, 0, 0, 0],
-  });
-
-  buildTextMesh({
-    text: "RAINBOW WAVE RAINBOW WAVE RAINBOW WAVE",
-    x: -900,
-    y: 180,
-    fontScale: 0.11,
-    maxWidth: 460,
-    wrap: true,
-    wrapMode: "word",
-    useStandard: true,
-    color: [1, 1, 1, 1],
-    effects: [
-      createWaveEffect("wave", frameCounter * 0.08, 19.0, 20.0),
-      createRainbowEffect("rainbow", 0.85, frameCounter * 0.02),
-    ],
-    params: [0.0, 20.0, 0.0, 1.0],
-    shadow: { offsetX: 14, offsetY: -14, scale: 1.01, opacity: 0.28 },
-  });
-
-  buildTextMesh({
-    text: "This box demonstrates automatic wrapping inside a fixed width, plus a generic per-glyph shader pipeline.",
-    x: 760,
-    y: 260,
-    fontScale: 0.078,
-    maxWidth: 300,
-    wrap: true,
-    wrapMode: "word",
-    useStandard: true,
-    color: [0.95, 0.95, 1, 1],
-    effects: [createPulseEffect("pulse", 0.16, frameCounter * 0.03)],
-    params: [0.0, 0.0, 0.0, 0.08],
-    shadow: { offsetX: 18, offsetY: -18, scale: 1.02, opacity: 0.3 },
-  });
-
-  buildTextMesh({
-    text: "Stacked shadows and offsets",
-    x: -20,
-    y: -360,
-    fontScale: 0.115,
-    useStandard: true,
-    color: [0.6, 0.9, 1.0, 1],
-    effects: [
-      createWaveEffect("wave", frameCounter * 0.05, 9.0, 10.0),
-      createPulseEffect("pulse", 0.1, frameCounter * 0.04),
-    ],
-    params: [0.2, 15.0, 0.0, 0.9],
-    shadow: { offsetX: 20, offsetY: -20, scale: 1.03, opacity: 0.4 },
-  });
-}
-
 function rebuildScene(): void {
   if (!scene || !loadedSlugData) return;
+
+  sceneRoot = clearScene(scene, sceneRoot);
+
+  const params = {
+    sceneRoot,
+    loadedSlugData,
+    materialMode: materialMode.value,
+    lineSpacing: lineSpacing.value,
+    frameCounter,
+    inputText: inputText.value,
+    fontScale: fontScale.value,
+  };
+
   if (activeTab.value === "benchmark") {
-    buildBenchmarkScene();
+    buildBenchmarkScene(params);
     status.value = "100k glyph benchmark ready.";
     return;
   }
+
   if (activeTab.value === "effects") {
-    buildEffectsScene();
+    buildEffectsScene(params);
     status.value = "Effects canvas ready.";
     return;
   }
-  buildPlaygroundScene();
+
+  buildPlaygroundScene(params);
   status.value = "Slug demo ready.";
 }
 
-function loadSelectedFont(): void {
+function clearLoadedSlugData(statusText?: string): void {
+  loadedSlugData = null;
+  if (scene && sceneRoot) {
+    disposeSceneRoot(scene, sceneRoot);
+    sceneRoot = null;
+  }
+
+  if (statusText) {
+    status.value = statusText;
+  }
+}
+
+async function loadSelectedFont(): Promise<void> {
   const currentTicket = ++loadTicket;
   status.value = `Generating from ${selectedFont.value}...`;
 
@@ -641,9 +203,124 @@ function loadSelectedFont(): void {
       if (currentTicket !== loadTicket) return;
       console.error(error);
       status.value = `Failed to generate from ${selectedFont.value}.`;
-      loadedSlugData = null;
-      disposeCurrentScene();
+      clearLoadedSlugData();
     });
+}
+
+async function loadCustomSluggishFile(file: File): Promise<void> {
+  const cacheKey = `${file.name}:${file.size}:${file.lastModified}`;
+  const cached = importedCache.get(cacheKey);
+  if (cached) {
+    loadedSlugData = cached;
+    rebuildScene();
+    return;
+  }
+
+  const currentTicket = ++loadTicket;
+  status.value = `Importing ${file.name}...`;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    if (currentTicket !== loadTicket) return;
+    const slugData = slugLoader.parse(buffer);
+    if (currentTicket !== loadTicket) return;
+    importedCache.set(cacheKey, slugData);
+    loadedSlugData = slugData;
+    rebuildScene();
+  } catch (error) {
+    if (currentTicket !== loadTicket) return;
+    console.error(error);
+    clearLoadedSlugData(`Failed to import ${file.name}.`);
+  }
+}
+
+async function loadSelectedSluggishSource(): Promise<void> {
+  const sourceName = selectedSluggishSource.value;
+
+  if (sourceName !== "custom") {
+    const currentTicket = ++loadTicket;
+    status.value = `Importing ${sourceName}...`;
+
+    const cached = importedCache.get(sourceName);
+    if (cached) {
+      loadedSlugData = cached;
+      rebuildScene();
+      return;
+    }
+
+    try {
+      const response = await fetch(`/fonts/${sourceName}`);
+      if (!response.ok) {
+        throw new Error(`Unable to fetch ${sourceName}`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      if (currentTicket !== loadTicket) return;
+      const slugData = slugLoader.parse(buffer);
+      if (currentTicket !== loadTicket) return;
+      importedCache.set(sourceName, slugData);
+      loadedSlugData = slugData;
+      rebuildScene();
+    } catch (error) {
+      if (currentTicket !== loadTicket) return;
+      console.error(error);
+      clearLoadedSlugData(`Failed to import ${sourceName}.`);
+    }
+    return;
+  }
+
+  if (!customSluggishFile.value) {
+    clearLoadedSlugData("Choose a .sluggish file to import.");
+    return;
+  }
+
+  await loadCustomSluggishFile(customSluggishFile.value);
+}
+
+async function loadSelectedAsset(): Promise<void> {
+  if (sourceMode.value === "sluggish") {
+    await loadSelectedSluggishSource();
+    return;
+  }
+
+  await loadSelectedFont();
+}
+
+function onCustomSluggishFileChange(event: Event): void {
+  const target = event.target as HTMLInputElement | null;
+  customSluggishFile.value = target?.files?.[0] ?? null;
+  if (
+    sourceMode.value === "sluggish" &&
+    selectedSluggishSource.value === "custom"
+  ) {
+    void loadSelectedSluggishSource();
+  }
+}
+
+function computeFpsMetrics(samples: number[]): {
+  fps: number;
+  avgFps: number;
+  low1Fps: number;
+} {
+  if (samples.length === 0) {
+    return { fps: 0, avgFps: 0, low1Fps: 0 };
+  }
+
+  const fps = samples[samples.length - 1];
+  const avgFps =
+    samples.reduce((sum, value) => sum + value, 0) / samples.length;
+
+  const sorted = [...samples].sort((a, b) => a - b);
+  const lowCount = Math.max(1, Math.floor(sorted.length * 0.01));
+  const lowSlice = sorted.slice(0, lowCount);
+  const low1Fps =
+    lowSlice.reduce((sum, value) => sum + value, 0) / lowSlice.length;
+
+  return {
+    fps,
+    avgFps,
+    low1Fps,
+  };
 }
 
 onMounted(async () => {
@@ -672,6 +349,9 @@ onMounted(async () => {
     availableFonts.value = fonts.filter((name) =>
       name.toLowerCase().endsWith(".ttf"),
     );
+    availableSluggishSources.value = fonts.filter((name) =>
+      name.toLowerCase().endsWith(".sluggish"),
+    );
     if (availableFonts.value.length > 0) {
       selectedFont.value = availableFonts.value.includes(
         "SpaceMono-Regular.ttf",
@@ -679,41 +359,43 @@ onMounted(async () => {
         ? "SpaceMono-Regular.ttf"
         : availableFonts.value[0];
     }
+    if (availableSluggishSources.value.length > 0) {
+      selectedSluggishSource.value = availableSluggishSources.value[0];
+    }
   } catch (error) {
     console.error(error);
     availableFonts.value = ["SpaceMono-Regular.ttf", "DejaVuSansMono.ttf"];
+    availableSluggishSources.value = [];
     selectedFont.value = "SpaceMono-Regular.ttf";
   }
 
-  loadSelectedFont();
+  void loadSelectedAsset();
 
   const tick = () => {
     animationFrame = window.requestAnimationFrame(tick);
     if (renderer && scene && camera) {
+      const now = performance.now();
+      if (lastFrameTime > 0) {
+        const deltaMs = Math.max(now - lastFrameTime, 0.0001);
+        const fps = 1000 / deltaMs;
+        fpsSamples.push(fps);
+        if (fpsSamples.length > maxFpsSamples) fpsSamples.shift();
+      }
+      lastFrameTime = now;
+
       controls?.update();
 
-      const elapsed = performance.now() * 0.001;
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (!mesh.material) return;
-
-        const materials = Array.isArray(mesh.material)
-          ? mesh.material
-          : [mesh.material];
-        for (const material of materials) {
-          const runtimeUniforms = (material as any).userData
-            ?.slugRuntimeUniforms;
-          if (runtimeUniforms?.uSlugTime) {
-            runtimeUniforms.uSlugTime.value = elapsed;
-          }
-        }
-      });
-
+      const elapsed = now * 0.001;
+      updateSlugRuntimeUniforms(scene, elapsed);
       renderer.render(scene, camera);
 
       frameCounter++;
       if (frameCounter % 10 === 0) {
+        const fpsMetrics = computeFpsMetrics(fpsSamples);
         renderInfo.value = {
+          fps: fpsMetrics.fps,
+          avgFps: fpsMetrics.avgFps,
+          low1Fps: fpsMetrics.low1Fps,
           calls: renderer.info.render.calls,
           triangles: renderer.info.render.triangles,
           lines: renderer.info.render.lines,
@@ -728,23 +410,24 @@ onMounted(async () => {
   tick();
 });
 
-watch([selectedFont, activeTab], () => {
-  if (!loadedSlugData) return;
-  if (
-    activeTab.value === "benchmark" ||
-    activeTab.value === "effects" ||
-    activeTab.value === "playground"
-  ) {
-    rebuildScene();
+watch(sourceMode, () => {
+  void loadSelectedAsset();
+});
+
+watch(selectedFont, () => {
+  if (sourceMode.value === "ttf") {
+    void loadSelectedAsset();
   }
 });
 
-watch([inputText, fontScale, lineSpacing, materialMode], () => {
-  if (
-    !loadedSlugData ||
-    (activeTab.value !== "playground" && activeTab.value !== "effects")
-  )
-    return;
+watch(selectedSluggishSource, () => {
+  if (sourceMode.value === "sluggish") {
+    void loadSelectedSluggishSource();
+  }
+});
+
+watch([activeTab, inputText, fontScale, lineSpacing, materialMode], () => {
+  if (!loadedSlugData) return;
   rebuildScene();
 });
 
@@ -762,7 +445,10 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   controls?.dispose();
 
-  disposeCurrentScene();
+  if (scene && sceneRoot) {
+    disposeSceneRoot(scene, sceneRoot);
+    sceneRoot = null;
+  }
 
   renderer?.dispose();
   if (renderer?.domElement.parentElement) {
@@ -848,13 +534,48 @@ onBeforeUnmount(() => {
       </div>
 
       <label>
-        TTF Font
-        <select v-model="selectedFont">
-          <option v-for="font in availableFonts" :key="font" :value="font">
-            {{ font }}
-          </option>
+        Source
+        <select v-model="sourceMode">
+          <option value="ttf">Generate from TTF</option>
+          <option value="sluggish">Import sluggish</option>
         </select>
       </label>
+
+      <template v-if="sourceMode === 'ttf'">
+        <label>
+          TTF Font
+          <select v-model="selectedFont">
+            <option v-for="font in availableFonts" :key="font" :value="font">
+              {{ font }}
+            </option>
+          </select>
+        </label>
+      </template>
+
+      <template v-else>
+        <label>
+          Sluggish Source
+          <select v-model="selectedSluggishSource">
+            <option value="custom">Custom file upload</option>
+            <option
+              v-for="source in availableSluggishSources"
+              :key="source"
+              :value="source"
+            >
+              {{ source }}
+            </option>
+          </select>
+        </label>
+
+        <label v-if="selectedSluggishSource === 'custom'">
+          Import .sluggish file
+          <input
+            type="file"
+            accept=".sluggish,application/octet-stream"
+            @change="onCustomSluggishFileChange"
+          />
+        </label>
+      </template>
 
       <label>
         Text
@@ -890,11 +611,16 @@ onBeforeUnmount(() => {
       <p class="status">{{ status }}</p>
       <p class="hint">
         Auto-wrap boxes, wavy/rainbow glyph params, shadow layers, and a
-        benchmark tab are built from the same instanced geometry pipeline.
+        benchmark tab are built from the same instanced geometry pipeline. In
+        sluggish import mode, the renderer uses your generated .sluggish file
+        directly.
       </p>
 
       <div class="stats">
         <p class="stats-title">renderer.info</p>
+        <p>fps: {{ renderInfo.fps.toFixed(1) }}</p>
+        <p>avg fps: {{ renderInfo.avgFps.toFixed(1) }}</p>
+        <p>1% low: {{ renderInfo.low1Fps.toFixed(1) }}</p>
         <p>calls: {{ renderInfo.calls }}</p>
         <p>triangles: {{ renderInfo.triangles }}</p>
         <p>lines: {{ renderInfo.lines }}</p>
@@ -1042,6 +768,7 @@ textarea {
   margin: 0;
   font-size: 0.74rem;
   line-height: 1.25;
+  color: rgba(234, 244, 255, 0.94);
 }
 
 @media (max-width: 640px) {
