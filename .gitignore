@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 
 # Local release helper script
-scripts/release-minor.mjs
+scripts/release-minor.sh
