@@ -371,6 +371,7 @@ ${slug_fragment_core}
 const SLUG_RAW_VERTEX_SHADER = `
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
+uniform float uSlugTime;
 in vec2 position;
 ${slug_pars_vertex}
 void main() {
@@ -387,6 +388,7 @@ export class SlugMaterial extends THREE.RawShaderMaterial {
       uniforms: {
         curvesTex: { value: null },
         bandsTex: { value: null },
+        uSlugTime: { value: 0 },
       },
       transparent: true,
       blending: THREE.NormalBlending,
@@ -397,9 +399,13 @@ export class SlugMaterial extends THREE.RawShaderMaterial {
     const uniforms = this.uniforms as {
       curvesTex: THREE.IUniform;
       bandsTex: THREE.IUniform;
+      uSlugTime: THREE.IUniform;
     };
 
     if (parameters.curvesTex) uniforms.curvesTex.value = parameters.curvesTex;
     if (parameters.bandsTex) uniforms.bandsTex.value = parameters.bandsTex;
+
+    this.userData = this.userData || {};
+    this.userData.slugRuntimeUniforms = uniforms;
   }
 }

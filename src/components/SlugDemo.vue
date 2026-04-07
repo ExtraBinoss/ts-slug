@@ -651,6 +651,16 @@ onBeforeUnmount(() => {
           . Slug itself is credited by that project to Eric Lengyel, and this
           port also leans on opentype.js and Three.js.
         </p>
+        <p>
+          This live demo repo:
+          <a
+            href="https://github.com/ExtraBinoss/ts-slug"
+            target="_blank"
+            rel="noreferrer"
+          >
+            ExtraBinoss/ts-slug
+          </a>
+        </p>
       </div>
     </aside>
   </section>
@@ -765,6 +775,43 @@ input[type="range"] {
   width: 100%;
 }
 
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(138, 170, 255, 0.45);
+  border: 1px solid rgba(158, 187, 255, 0.45);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #d7e5ff;
+  border: 2px solid #2e6bff;
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #d7e5ff;
+  border: 2px solid #2e6bff;
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(138, 170, 255, 0.45);
+  border: 1px solid rgba(158, 187, 255, 0.45);
+}
+
 select,
 textarea {
   background: rgba(3, 9, 16, 0.84);
@@ -818,7 +865,7 @@ textarea {
   padding: 8px;
   border-radius: 8px;
   border: 1px solid rgba(148, 175, 255, 0.25);
-  background: rgba(2, 7, 12, 0.5);
+  background: rgba(2, 7, 12, 0.75);
 }
 
 .credits-title {
@@ -828,10 +875,17 @@ textarea {
 }
 
 .credits p:last-child {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(246, 251, 255, 0.98);
+}
+
+.credits p {
   margin: 0;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  color: rgba(234, 244, 255, 0.9);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(246, 251, 255, 0.98);
 }
 
 .credits a {

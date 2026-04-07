@@ -47,6 +47,7 @@ jobs:
         run: npm run build:lib
 
       - name: Publish to npm
+        working-directory: src/library
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --prefix src/library --access public
+        run: npm publish --access public
