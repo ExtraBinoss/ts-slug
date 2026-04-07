@@ -1,6 +1,6 @@
 {
   "name": "three-ts-slug",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TsSlug library package for generating and rendering Slug data. Slug is a font format that encodes glyphs as a series of curves and bands, allowing for efficient rendering and styling in 3D applications.",
   "type": "module",
   "main": "./dist/index.js",
