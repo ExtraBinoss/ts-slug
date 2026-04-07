@@ -4,7 +4,7 @@ import {
   SlugMaterial,
   injectSlug,
   type SlugShaderEffect,
-} from "../../library";
+} from "../../library/index";
 import {
   createPulseEffect,
   createRainbowEffect,

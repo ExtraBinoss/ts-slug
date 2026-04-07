@@ -1,4 +1,4 @@
-import type { SlugShaderEffect } from "../../library";
+import type { SlugShaderEffect } from "../../library/index";
 
 export function createWaveEffect(
   name: string,

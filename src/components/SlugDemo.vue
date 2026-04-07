@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { SlugGenerator, SlugLoader } from "../library";
+import { SlugGenerator, SlugLoader } from "../library/index";
 import {
   buildBenchmarkScene,
   buildPlaygroundScene,

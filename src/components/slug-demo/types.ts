@@ -4,7 +4,7 @@ import type {
   SlugLoaderData,
   SlugGlyphStyle,
   SlugShaderEffect,
-} from "../../library";
+} from "../../library/index";
 
 export type TabId = "playground" | "benchmark";
 export type CameraMode = "2d" | "orbit";
