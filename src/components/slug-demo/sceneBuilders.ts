@@ -125,6 +125,7 @@ function buildTextMesh(
       loadedSlugData,
       materialMode,
       spec.useStandard,
+      spec.effects,
     );
 
     if (
@@ -136,7 +137,10 @@ function buildTextMesh(
       (layerMaterial as any).depthTest = false;
     }
 
-    const layerMesh = new THREE.Mesh(new SlugGeometry(glyphCapacity), layerMaterial);
+    const layerMesh = new THREE.Mesh(
+      new SlugGeometry(glyphCapacity),
+      layerMaterial,
+    );
     layerMesh.position.copy(mesh.position);
     layerMesh.position.x += options.offsetX;
     layerMesh.position.y += options.offsetY;
@@ -146,7 +150,9 @@ function buildTextMesh(
     (layerMesh.geometry as SlugGeometry).addText(spec.text, loadedSlugData, {
       fontScale: spec.fontScale,
       lineHeight:
-        baseLineHeight * (spec.lineHeightFactor ?? lineSpacing) * spec.fontScale,
+        baseLineHeight *
+        (spec.lineHeightFactor ?? lineSpacing) *
+        spec.fontScale,
       startX: 0,
       startY: 0,
       justify: "left",
@@ -154,8 +160,13 @@ function buildTextMesh(
       wrap: spec.wrap,
       wrapMode: spec.wrapMode,
       glyphStyle: {
-        color: [options.color[0], options.color[1], options.color[2], options.opacity],
-        params: [0, 0, 0, 0],
+        color: [
+          options.color[0],
+          options.color[1],
+          options.color[2],
+          options.opacity,
+        ],
+        params: spec.params || [0, 0, 0, 0],
       },
     });
 
@@ -212,6 +223,10 @@ function addPlaygroundFontScaleStrip(
   lineSpacing: number,
 ): void {
   const samples = [3, 6, 9, 12, 16, 24, 32];
+  const baseSamplePx = 32;
+  const baseSampleScale = 0.09;
+  const startY = -430;
+  const rowGap = 62;
 
   buildTextMesh(
     {
@@ -228,25 +243,25 @@ function addPlaygroundFontScaleStrip(
     lineSpacing,
   );
 
-  const previewText = samples
-    .map((px) => `${px.toString().padStart(2, " ")}px   Aa   00`)
-    .join("\n");
+  for (let index = 0; index < samples.length; index++) {
+    const px = samples[index];
+    const sampleScale = baseSampleScale * (px / baseSamplePx);
 
-  buildTextMesh(
-    {
-      text: previewText,
-      x: -740,
-      y: -420,
-      fontScale: 0.09,
-      lineHeightFactor: 1.25,
-      color: [1, 1, 1, 1],
-      useStandard: materialMode === "standard",
-    },
-    sceneRoot,
-    loadedSlugData,
-    materialMode,
-    lineSpacing,
-  );
+    buildTextMesh(
+      {
+        text: `${px.toString().padStart(2, " ")}px   Aa   00`,
+        x: -740,
+        y: startY - index * rowGap,
+        fontScale: sampleScale,
+        color: [1, 1, 1, 1],
+        useStandard: materialMode === "standard",
+      },
+      sceneRoot,
+      loadedSlugData,
+      materialMode,
+      lineSpacing,
+    );
+  }
 }
 
 export function clearScene(
@@ -424,18 +439,12 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
       useStandard: true,
       color: [1, 0.95, 0.75, 1],
       effects: [
-        createWaveEffect("wave", frameCounter * 0.03, 15.0, 12.0),
-        createRainbowEffect("rainbow", 0.75, frameCounter * 0.01),
-        createPulseEffect("pulse", 0.18, frameCounter * 0.02),
+        createWaveEffect("wave", frameCounter * 0.03, 5.0, 7.0),
+        createRainbowEffect("rainbow", 0.65, frameCounter * 0.01),
+        createPulseEffect("pulse", 0.2, frameCounter * 0.02),
       ],
-      params: [1.0, 18.0, 0.0, 1.0],
-      outline: {
-        offsetX: 0,
-        offsetY: 0,
-        scale: 1.05,
-        opacity: 0.9,
-        color: [0.04, 0.04, 0.04],
-      },
+      params: [1.0, 4.0, 3.0, 0.65],
+      shadow: { offsetX: 14, offsetY: -14, scale: 1.02, opacity: 0.3 },
     },
     sceneRoot,
     loadedSlugData,
@@ -450,10 +459,15 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
       y: -170,
       fontScale: 0.12,
       lineHeightFactor: 1.2,
-      useStandard: materialMode === "standard",
+      useStandard: true,
       color: [0.98, 0.75, 0.3, 1],
-      params: [0, 0, 0, 0],
-      shadow: { offsetX: 22, offsetY: -22, scale: 1.04, opacity: 0.45 },
+      effects: [
+        createWaveEffect("wave", frameCounter * 0.03, 4.5, 8.0),
+        createRainbowEffect("rainbow", 0.55, frameCounter * 0.02),
+        createPulseEffect("pulse", 0.22, frameCounter * 0.02),
+      ],
+      params: [0.6, 3.5, 3.5, 0.55],
+      shadow: { offsetX: 18, offsetY: -18, scale: 1.03, opacity: 0.35 },
     },
     sceneRoot,
     loadedSlugData,
@@ -503,11 +517,11 @@ export function buildEffectsScene(params: BuildSceneParams): void {
       useStandard: true,
       color: [1, 1, 1, 1],
       effects: [
-        createWaveEffect("wave", frameCounter * 0.08, 19.0, 20.0),
-        createRainbowEffect("rainbow", 0.85, frameCounter * 0.02),
+        createWaveEffect("wave", frameCounter * 0.08, 5.0, 8.0),
+        createRainbowEffect("rainbow", 0.75, frameCounter * 0.02),
       ],
-      params: [0.0, 20.0, 0.0, 1.0],
-      shadow: { offsetX: 14, offsetY: -14, scale: 1.01, opacity: 0.28 },
+      params: [0.0, 4.0, 3.5, 0.75],
+      shadow: { offsetX: 14, offsetY: -14, scale: 1.02, opacity: 0.28 },
     },
     sceneRoot,
     loadedSlugData,
@@ -528,7 +542,7 @@ export function buildEffectsScene(params: BuildSceneParams): void {
       color: [0.95, 0.95, 1, 1],
       effects: [createPulseEffect("pulse", 0.16, frameCounter * 0.03)],
       params: [0.0, 0.0, 0.0, 0.08],
-      shadow: { offsetX: 18, offsetY: -18, scale: 1.02, opacity: 0.3 },
+      shadow: { offsetX: 16, offsetY: -16, scale: 1.02, opacity: 0.24 },
     },
     sceneRoot,
     loadedSlugData,
@@ -545,11 +559,11 @@ export function buildEffectsScene(params: BuildSceneParams): void {
       useStandard: true,
       color: [0.6, 0.9, 1.0, 1],
       effects: [
-        createWaveEffect("wave", frameCounter * 0.05, 9.0, 10.0),
-        createPulseEffect("pulse", 0.1, frameCounter * 0.04),
+        createWaveEffect("wave", frameCounter * 0.05, 4.0, 6.0),
+        createPulseEffect("pulse", 0.2, frameCounter * 0.04),
       ],
-      params: [0.2, 15.0, 0.0, 0.9],
-      shadow: { offsetX: 20, offsetY: -20, scale: 1.03, opacity: 0.4 },
+      params: [0.2, 3.5, 2.8, 0.6],
+      shadow: { offsetX: 18, offsetY: -18, scale: 1.03, opacity: 0.32 },
     },
     sceneRoot,
     loadedSlugData,

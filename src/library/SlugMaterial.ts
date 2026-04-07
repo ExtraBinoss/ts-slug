@@ -132,7 +132,7 @@ const slug_fragment_core = `
 const slug_fragment_standard =
   slug_fragment_core +
   `
-    vec3 effectColor = mix(vGlyphColor.rgb, rainbowColor(vGlyphParams.x), clamp(vGlyphParams.w, 0.0, 1.0));
+    vec3 effectColor = mix(vGlyphColor.rgb, rainbowColor(vGlyphParams.x + uSlugTime * 0.25), clamp(vGlyphParams.w, 0.0, 1.0));
     diffuseColor.rgb *= effectColor;
     diffuseColor.a *= vGlyphColor.a;
     diffuseColor.a *= slugAlpha;
@@ -158,8 +158,9 @@ const slug_vertex = `
     vec3 transformed = vec3( position.xy * aScaleBias.xy + aScaleBias.zw, 0.0 );
     vTexCoords = position.xy * 0.5 + 0.5;
 
-  float waveOffset = sin((position.y + aGlyphParams.x) * max(aGlyphParams.y, 0.0001)) * aGlyphParams.z;
-  transformed.x += waveOffset;
+  float waveSeed = aGlyphParams.x + float(gl_InstanceID) * 0.021;
+  float waveOffset = sin((waveSeed + uSlugTime * 2.0) * max(aGlyphParams.y, 0.0001)) * aGlyphParams.z;
+  transformed.y += waveOffset;
     
     #ifdef SLUG_MODELSPACE_UV
     #ifdef USE_UV
