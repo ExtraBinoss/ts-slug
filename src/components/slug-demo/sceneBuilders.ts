@@ -78,9 +78,7 @@ function buildTextMesh(
   geometry.addText(spec.text, loadedSlugData, {
     fontScale: spec.fontScale,
     lineHeight:
-      baseLineHeight *
-      (spec.lineHeightFactor ?? lineSpacing) *
-      spec.fontScale,
+      baseLineHeight * (spec.lineHeightFactor ?? lineSpacing) * spec.fontScale,
     startX: 0,
     startY: 0,
     justify: "left",
@@ -210,29 +208,31 @@ function addPlaygroundFontScaleStrip(
     lineSpacing,
   );
 
-  let currentX = -740;
-  for (const px of samples) {
-    const sampleText = `${px}px Aa`;
-    const sampleScale = px / 100;
-    buildTextMesh(
-      {
-        text: sampleText,
-        x: currentX,
-        y: -450,
-        fontScale: sampleScale,
-        color: [1, 1, 1, 1],
-        useStandard: materialMode === "standard",
-      },
-      sceneRoot,
-      loadedSlugData,
-      materialMode,
-      lineSpacing,
-    );
-    currentX += 250;
-  }
+  const previewText = samples
+    .map((px) => `${px.toString().padStart(2, " ")}px   Aa   00`)
+    .join("\n");
+
+  buildTextMesh(
+    {
+      text: previewText,
+      x: -740,
+      y: -420,
+      fontScale: 0.09,
+      lineHeightFactor: 1.25,
+      color: [1, 1, 1, 1],
+      useStandard: materialMode === "standard",
+    },
+    sceneRoot,
+    loadedSlugData,
+    materialMode,
+    lineSpacing,
+  );
 }
 
-export function clearScene(scene: THREE.Scene, sceneRoot: THREE.Group | null): THREE.Group {
+export function clearScene(
+  scene: THREE.Scene,
+  sceneRoot: THREE.Group | null,
+): THREE.Group {
   if (sceneRoot) {
     scene.remove(sceneRoot);
     disposeObject(sceneRoot);
@@ -254,24 +254,35 @@ export function disposeObject(object: THREE.Object3D): void {
   });
 }
 
-export function disposeSceneRoot(scene: THREE.Scene, sceneRoot: THREE.Group | null): void {
+export function disposeSceneRoot(
+  scene: THREE.Scene,
+  sceneRoot: THREE.Group | null,
+): void {
   if (!sceneRoot) return;
   scene.remove(sceneRoot);
   disposeObject(sceneRoot);
 }
 
 export function buildBenchmarkScene(params: BuildSceneParams): void {
-  const {
-    sceneRoot,
-    loadedSlugData,
-    materialMode,
-    lineSpacing,
-  } = params;
+  const { sceneRoot, loadedSlugData, materialMode, lineSpacing } = params;
 
   addCommonLights(sceneRoot, 0.45, 1.2, 0.65);
 
   const totalGlyphs = 100000;
-  const glyphCycle = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
+  const glyphCycle = [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+  ];
   const geometry = new SlugGeometry(totalGlyphs);
   const mapWidth = 9200;
   const mapHeight = 5600;
@@ -343,10 +354,11 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
     {
       text: inputText,
       x: 0,
-      y: 0,
+      y: 40,
       fontScale,
       lineHeightFactor: lineSpacing,
       useStandard: materialMode === "standard",
+      shadow: { offsetX: 14, offsetY: -14, scale: 1.015, opacity: 0.38 },
     },
     sceneRoot,
     loadedSlugData,
@@ -357,10 +369,10 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
   buildTextMesh(
     {
       text: "Auto wrap box in the top-right. This is a constrained text block showing word wrapping and live layout with animation-friendly shader params.",
-      x: 420,
-      y: 260,
-      fontScale: 0.075,
-      maxWidth: 320,
+      x: 760,
+      y: 340,
+      fontScale: 0.072,
+      maxWidth: 260,
       wrap: true,
       wrapMode: "word",
       useStandard: materialMode === "standard",
@@ -377,10 +389,10 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
   buildTextMesh(
     {
       text: "Wavy text / rainbow mix / shadow / wrap / scale",
-      x: -460,
-      y: 290,
-      fontScale: 0.085,
-      maxWidth: 360,
+      x: -760,
+      y: 340,
+      fontScale: 0.078,
+      maxWidth: 300,
       wrap: true,
       wrapMode: "word",
       useStandard: true,
@@ -402,8 +414,8 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
   buildTextMesh(
     {
       text: "Shadow block",
-      x: -520,
-      y: -250,
+      x: 690,
+      y: -260,
       fontScale: 0.12,
       useStandard: materialMode === "standard",
       color: [0.98, 0.75, 0.3, 1],
@@ -416,11 +428,17 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
     lineSpacing,
   );
 
-  addPlaygroundFontScaleStrip(sceneRoot, loadedSlugData, materialMode, lineSpacing);
+  addPlaygroundFontScaleStrip(
+    sceneRoot,
+    loadedSlugData,
+    materialMode,
+    lineSpacing,
+  );
 }
 
 export function buildEffectsScene(params: BuildSceneParams): void {
-  const { sceneRoot, loadedSlugData, materialMode, lineSpacing, frameCounter } = params;
+  const { sceneRoot, loadedSlugData, materialMode, lineSpacing, frameCounter } =
+    params;
 
   addCommonLights(sceneRoot, 0.55, 1.2, 0.75);
 
@@ -507,7 +525,10 @@ export function buildEffectsScene(params: BuildSceneParams): void {
   );
 }
 
-export function updateSlugRuntimeUniforms(scene: THREE.Scene, elapsed: number): void {
+export function updateSlugRuntimeUniforms(
+  scene: THREE.Scene,
+  elapsed: number,
+): void {
   scene.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.material) return;

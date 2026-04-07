@@ -1,7 +1,12 @@
 import type * as THREE from "three";
-import type { SlugGeneratedData, SlugLoaderData, SlugGlyphStyle, SlugShaderEffect } from "../../library";
+import type {
+  SlugGeneratedData,
+  SlugLoaderData,
+  SlugGlyphStyle,
+  SlugShaderEffect,
+} from "../../library";
 
-export type TabId = "playground" | "benchmark" | "effects";
+export type TabId = "playground" | "benchmark";
 export type CameraMode = "2d" | "orbit";
 export type MaterialMode = "slug" | "standard";
 

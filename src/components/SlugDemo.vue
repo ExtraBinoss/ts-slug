@@ -5,7 +5,6 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { SlugGenerator, SlugLoader } from "../library";
 import {
   buildBenchmarkScene,
-  buildEffectsScene,
   buildPlaygroundScene,
   clearScene,
   disposeSceneRoot,
@@ -27,7 +26,7 @@ const cameraMode = ref<CameraMode>("2d");
 const activeTab = ref<TabId>("playground");
 const sourceMode = ref<"ttf" | "sluggish">("ttf");
 const materialMode = ref<MaterialMode>("slug");
-const backgroundColor = ref("#e9edf2");
+const backgroundColor = ref("#c7cdd5");
 const usePageBackground = ref(false);
 const selectedFont = ref("SpaceMono-Regular.ttf");
 const availableFonts = ref<string[]>([]);
@@ -163,12 +162,6 @@ function rebuildScene(): void {
   if (activeTab.value === "benchmark") {
     buildBenchmarkScene(params);
     status.value = "100k glyph benchmark ready.";
-    return;
-  }
-
-  if (activeTab.value === "effects") {
-    buildEffectsScene(params);
-    status.value = "Effects canvas ready.";
     return;
   }
 
@@ -500,125 +493,128 @@ onBeforeUnmount(() => {
         >
           100k Benchmark
         </button>
-        <button
-          :class="{ active: activeTab === 'effects' }"
-          @click="activeTab = 'effects'"
-        >
-          Effects
-        </button>
       </div>
 
-      <div class="row two">
+      <div class="control-group">
+        <p class="group-title">View</p>
+        <div class="row two">
+          <label>
+            Camera
+            <select v-model="cameraMode">
+              <option value="2d">2D (pan/zoom)</option>
+              <option value="orbit">Orbit (3D)</option>
+            </select>
+          </label>
+
+          <label>
+            Material
+            <select v-model="materialMode">
+              <option value="slug">SlugMaterial</option>
+              <option value="standard">MeshStandard+inject</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row two">
+          <label>
+            Background
+            <input
+              v-model="backgroundColor"
+              type="color"
+              :disabled="usePageBackground"
+            />
+          </label>
+
+          <label>
+            Mode
+            <select v-model="usePageBackground">
+              <option :value="false">Solid</option>
+              <option :value="true">Page gradient</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <p class="group-title">Source</p>
         <label>
-          Camera
-          <select v-model="cameraMode">
-            <option value="2d">2D (pan/zoom)</option>
-            <option value="orbit">Orbit (3D)</option>
+          Source Type
+          <select v-model="sourceMode">
+            <option value="ttf">Generate from TTF</option>
+            <option value="sluggish">Import sluggish</option>
           </select>
         </label>
 
-        <label>
-          Material
-          <select v-model="materialMode">
-            <option value="slug">SlugMaterial</option>
-            <option value="standard">MeshStandard+inject</option>
-          </select>
-        </label>
+        <template v-if="sourceMode === 'ttf'">
+          <label>
+            TTF Font
+            <select v-model="selectedFont">
+              <option v-for="font in availableFonts" :key="font" :value="font">
+                {{ font }}
+              </option>
+            </select>
+          </label>
+        </template>
+
+        <template v-else>
+          <label>
+            Sluggish Source
+            <select v-model="selectedSluggishSource">
+              <option value="custom">Custom file upload</option>
+              <option
+                v-for="source in availableSluggishSources"
+                :key="source"
+                :value="source"
+              >
+                {{ source }}
+              </option>
+            </select>
+          </label>
+
+          <label v-if="selectedSluggishSource === 'custom'">
+            Import .sluggish file
+            <input
+              type="file"
+              accept=".sluggish,application/octet-stream"
+              @change="onCustomSluggishFileChange"
+            />
+          </label>
+        </template>
       </div>
 
-      <div class="row two">
+      <div class="control-group">
+        <p class="group-title">Text</p>
         <label>
-          Background
-          <input
-            v-model="backgroundColor"
-            type="color"
-            :disabled="usePageBackground"
+          Text
+          <textarea
+            v-model="inputText"
+            rows="4"
+            placeholder="Type your text here"
           />
         </label>
 
         <label>
-          Mode
-          <select v-model="usePageBackground">
-            <option :value="false">Solid</option>
-            <option :value="true">Page gradient</option>
-          </select>
-        </label>
-      </div>
-
-      <label>
-        Source
-        <select v-model="sourceMode">
-          <option value="ttf">Generate from TTF</option>
-          <option value="sluggish">Import sluggish</option>
-        </select>
-      </label>
-
-      <template v-if="sourceMode === 'ttf'">
-        <label>
-          TTF Font
-          <select v-model="selectedFont">
-            <option v-for="font in availableFonts" :key="font" :value="font">
-              {{ font }}
-            </option>
-          </select>
-        </label>
-      </template>
-
-      <template v-else>
-        <label>
-          Sluggish Source
-          <select v-model="selectedSluggishSource">
-            <option value="custom">Custom file upload</option>
-            <option
-              v-for="source in availableSluggishSources"
-              :key="source"
-              :value="source"
-            >
-              {{ source }}
-            </option>
-          </select>
-        </label>
-
-        <label v-if="selectedSluggishSource === 'custom'">
-          Import .sluggish file
+          Scale: {{ fontScale.toFixed(2) }}
           <input
-            type="file"
-            accept=".sluggish,application/octet-stream"
-            @change="onCustomSluggishFileChange"
+            v-model.number="fontScale"
+            type="range"
+            min="0.06"
+            max="0.3"
+            step="0.01"
           />
         </label>
-      </template>
 
-      <label>
-        Text
-        <textarea
-          v-model="inputText"
-          rows="4"
-          placeholder="Type your text here"
-        />
-      </label>
-
-      <label>
-        Scale: {{ fontScale.toFixed(2) }}
-        <input
-          v-model.number="fontScale"
-          type="range"
-          min="0.06"
-          max="0.3"
-          step="0.01"
-        />
-      </label>
-
-      <label>
-        Line Spacing: {{ lineSpacing.toFixed(2) }}
-        <input
-          v-model.number="lineSpacing"
-          type="range"
-          min="0.8"
-          max="2"
-          step="0.05"
-        />
-      </label>
+        <label>
+          Line Spacing: {{ lineSpacing.toFixed(2) }}
+          <input
+            v-model.number="lineSpacing"
+            type="range"
+            min="0.8"
+            max="2"
+            step="0.05"
+          />
+        </label>
+      </div>
 
       <p class="status">{{ status }}</p>
       <p class="hint">
@@ -683,17 +679,35 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 12px;
   left: 12px;
-  width: min(380px, calc(100vw - 24px));
+  width: min(440px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   overflow: auto;
-  padding: 12px;
+  padding: 14px;
   border-radius: 12px;
   background: rgba(4, 11, 20, 0.76);
   border: 1px solid rgba(136, 175, 255, 0.3);
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.control-group {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(143, 172, 242, 0.22);
+  background: rgba(2, 8, 14, 0.52);
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.group-title {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(158, 191, 255, 0.92);
 }
 
 .kicker {
@@ -712,7 +726,7 @@ h1 {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 6px;
 }
 
