@@ -33,6 +33,13 @@ export type SceneMeshSpec = {
   useStandard?: boolean;
   scale?: number;
   shadow?: { offsetX: number; offsetY: number; scale: number; opacity: number };
+  outline?: {
+    offsetX: number;
+    offsetY: number;
+    scale: number;
+    opacity: number;
+    color?: [number, number, number];
+  };
 };
 
 export type BuildSceneParams = {

@@ -113,36 +113,40 @@ function buildTextMesh(
     mesh.position.y += -center.y;
   }
 
-  if (spec.shadow) {
-    const shadowMaterial = buildMaterial(
+  const addLayer = (options: {
+    offsetX: number;
+    offsetY: number;
+    scale: number;
+    opacity: number;
+    color: [number, number, number];
+    renderOrder: number;
+  }): void => {
+    const layerMaterial = buildMaterial(
       loadedSlugData,
       materialMode,
       spec.useStandard,
     );
+
     if (
-      shadowMaterial instanceof THREE.MeshStandardMaterial ||
-      shadowMaterial instanceof SlugMaterial
+      layerMaterial instanceof THREE.MeshStandardMaterial ||
+      layerMaterial instanceof SlugMaterial
     ) {
-      shadowMaterial.transparent = true;
-      (shadowMaterial as any).opacity = spec.shadow.opacity;
-      (shadowMaterial as any).depthWrite = false;
+      layerMaterial.transparent = true;
+      (layerMaterial as any).depthWrite = false;
+      (layerMaterial as any).depthTest = false;
     }
 
-    const shadowMesh = new THREE.Mesh(
-      new SlugGeometry(glyphCapacity),
-      shadowMaterial,
-    );
-    shadowMesh.position.copy(mesh.position);
-    shadowMesh.position.x += spec.shadow.offsetX;
-    shadowMesh.position.y += spec.shadow.offsetY;
-    shadowMesh.scale.setScalar(spec.shadow.scale);
+    const layerMesh = new THREE.Mesh(new SlugGeometry(glyphCapacity), layerMaterial);
+    layerMesh.position.copy(mesh.position);
+    layerMesh.position.x += options.offsetX;
+    layerMesh.position.y += options.offsetY;
+    layerMesh.scale.setScalar(options.scale);
+    layerMesh.renderOrder = options.renderOrder;
 
-    (shadowMesh.geometry as SlugGeometry).addText(spec.text, loadedSlugData, {
+    (layerMesh.geometry as SlugGeometry).addText(spec.text, loadedSlugData, {
       fontScale: spec.fontScale,
       lineHeight:
-        baseLineHeight *
-        (spec.lineHeightFactor ?? lineSpacing) *
-        spec.fontScale,
+        baseLineHeight * (spec.lineHeightFactor ?? lineSpacing) * spec.fontScale,
       startX: 0,
       startY: 0,
       justify: "left",
@@ -150,21 +154,37 @@ function buildTextMesh(
       wrap: spec.wrap,
       wrapMode: spec.wrapMode,
       glyphStyle: {
-        color: [0, 0, 0, 1],
+        color: [options.color[0], options.color[1], options.color[2], options.opacity],
         params: [0, 0, 0, 0],
       },
     });
 
-    const shadowBox = shadowMesh.geometry.boundingBox;
-    if (shadowBox && !shadowBox.isEmpty()) {
-      const center = new THREE.Vector3();
-      shadowBox.getCenter(center);
-      shadowMesh.position.x += -center.x;
-      shadowMesh.position.y += -center.y;
-    }
-    sceneRoot.add(shadowMesh);
+    sceneRoot.add(layerMesh);
+  };
+
+  if (spec.outline) {
+    addLayer({
+      offsetX: spec.outline.offsetX,
+      offsetY: spec.outline.offsetY,
+      scale: spec.outline.scale,
+      opacity: spec.outline.opacity,
+      color: spec.outline.color || [0.02, 0.02, 0.02],
+      renderOrder: 5,
+    });
   }
 
+  if (spec.shadow) {
+    addLayer({
+      offsetX: spec.shadow.offsetX,
+      offsetY: spec.shadow.offsetY,
+      scale: spec.shadow.scale,
+      opacity: spec.shadow.opacity,
+      color: [0, 0, 0],
+      renderOrder: 10,
+    });
+  }
+
+  mesh.renderOrder = 20;
   sceneRoot.add(mesh);
   return mesh;
 }
@@ -358,7 +378,6 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
       fontScale,
       lineHeightFactor: lineSpacing,
       useStandard: materialMode === "standard",
-      shadow: { offsetX: 14, offsetY: -14, scale: 1.015, opacity: 0.38 },
     },
     sceneRoot,
     loadedSlugData,
@@ -369,16 +388,23 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
   buildTextMesh(
     {
       text: "Auto wrap box in the top-right. This is a constrained text block showing word wrapping and live layout with animation-friendly shader params.",
-      x: 760,
-      y: 340,
-      fontScale: 0.072,
-      maxWidth: 260,
+      x: 1120,
+      y: 250,
+      fontScale: 0.076,
+      lineHeightFactor: 1.28,
+      maxWidth: 340,
       wrap: true,
       wrapMode: "word",
       useStandard: materialMode === "standard",
       color: [0.92, 0.96, 1.0, 1],
       params: [0, 0, 0, 0.06],
-      shadow: { offsetX: 12, offsetY: -12, scale: 1.02, opacity: 0.35 },
+      outline: {
+        offsetX: 0,
+        offsetY: 0,
+        scale: 1.05,
+        opacity: 0.85,
+        color: [0.05, 0.05, 0.05],
+      },
     },
     sceneRoot,
     loadedSlugData,
@@ -403,7 +429,13 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
         createPulseEffect("pulse", 0.18, frameCounter * 0.02),
       ],
       params: [1.0, 18.0, 0.0, 1.0],
-      shadow: { offsetX: 10, offsetY: -10, scale: 1.02, opacity: 0.28 },
+      outline: {
+        offsetX: 0,
+        offsetY: 0,
+        scale: 1.05,
+        opacity: 0.9,
+        color: [0.04, 0.04, 0.04],
+      },
     },
     sceneRoot,
     loadedSlugData,
@@ -413,14 +445,15 @@ export function buildPlaygroundScene(params: BuildSceneParams): void {
 
   buildTextMesh(
     {
-      text: "Shadow block",
-      x: 690,
-      y: -260,
+      text: "Shadow block\n(only this one)",
+      x: 1240,
+      y: -170,
       fontScale: 0.12,
+      lineHeightFactor: 1.2,
       useStandard: materialMode === "standard",
       color: [0.98, 0.75, 0.3, 1],
       params: [0, 0, 0, 0],
-      shadow: { offsetX: 24, offsetY: -24, scale: 1.04, opacity: 0.35 },
+      shadow: { offsetX: 22, offsetY: -22, scale: 1.04, opacity: 0.45 },
     },
     sceneRoot,
     loadedSlugData,
