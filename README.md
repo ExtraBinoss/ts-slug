@@ -23,6 +23,9 @@ The Vue app in this repository is only a showcase for the library.
 
 - TypeScript implementation of generator, loader, geometry, and material pipeline.
 - Per-character instanced rendering with `SlugGeometry`.
+- Full use of Three.js GPU instancing so text is rendered efficiently as glyph instances.
+- Benchmark scene demonstrates up to ~100k individually placed text glyph instances without visible lag on typical desktop GPUs.
+- Automatic buffer capacity growth in `SlugGeometry` with no manual user input required.
 - Shader effect extension points (`SlugShaderEffect`) for custom animation and styling.
 - Binary `.sluggish` export/import path for caching and fast startup.
 - Runtime font parsing path via `opentype.js`.

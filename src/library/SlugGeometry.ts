@@ -16,7 +16,7 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
   aGlyphColor: Float32Array;
   aGlyphParams: Float32Array;
 
-  constructor(maxGlyphs = 1024) {
+  constructor(maxGlyphs?: number) {
     super();
 
     const vertices = new Float32Array([
@@ -36,14 +36,15 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     this.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
     this.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
 
-    this.maxGlyphs = maxGlyphs;
+    const initialCapacity = maxGlyphs ?? 256;
+    this.maxGlyphs = Math.max(1, Math.floor(initialCapacity));
     this.glyphCount = 0;
 
-    this.aScaleBias = new Float32Array(maxGlyphs * 4);
-    this.aGlyphBandScale = new Float32Array(maxGlyphs * 4);
-    this.aBandMaxTexCoords = new Float32Array(maxGlyphs * 4);
-    this.aGlyphColor = new Float32Array(maxGlyphs * 4);
-    this.aGlyphParams = new Float32Array(maxGlyphs * 4);
+    this.aScaleBias = new Float32Array(this.maxGlyphs * 4);
+    this.aGlyphBandScale = new Float32Array(this.maxGlyphs * 4);
+    this.aBandMaxTexCoords = new Float32Array(this.maxGlyphs * 4);
+    this.aGlyphColor = new Float32Array(this.maxGlyphs * 4);
+    this.aGlyphParams = new Float32Array(this.maxGlyphs * 4);
 
     const attrScaleBias = new THREE.InstancedBufferAttribute(
       this.aScaleBias,
@@ -85,6 +86,60 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     this.boundingSphere = new THREE.Sphere();
   }
 
+  private setInstancedAttribute(name: string, array: Float32Array): void {
+    const attribute = new THREE.InstancedBufferAttribute(array, 4);
+    attribute.setUsage(THREE.DynamicDrawUsage);
+    this.setAttribute(name, attribute);
+  }
+
+  private resizeCapacity(newCapacity: number): void {
+    const targetCapacity = Math.max(
+      this.maxGlyphs + 1,
+      Math.floor(newCapacity),
+    );
+    if (targetCapacity <= this.maxGlyphs) return;
+
+    const copyLength = this.glyphCount * 4;
+
+    const nextScaleBias = new Float32Array(targetCapacity * 4);
+    nextScaleBias.set(this.aScaleBias.subarray(0, copyLength));
+    this.aScaleBias = nextScaleBias;
+
+    const nextGlyphBandScale = new Float32Array(targetCapacity * 4);
+    nextGlyphBandScale.set(this.aGlyphBandScale.subarray(0, copyLength));
+    this.aGlyphBandScale = nextGlyphBandScale;
+
+    const nextBandMaxTexCoords = new Float32Array(targetCapacity * 4);
+    nextBandMaxTexCoords.set(this.aBandMaxTexCoords.subarray(0, copyLength));
+    this.aBandMaxTexCoords = nextBandMaxTexCoords;
+
+    const nextGlyphColor = new Float32Array(targetCapacity * 4);
+    nextGlyphColor.set(this.aGlyphColor.subarray(0, copyLength));
+    this.aGlyphColor = nextGlyphColor;
+
+    const nextGlyphParams = new Float32Array(targetCapacity * 4);
+    nextGlyphParams.set(this.aGlyphParams.subarray(0, copyLength));
+    this.aGlyphParams = nextGlyphParams;
+
+    this.setInstancedAttribute("aScaleBias", this.aScaleBias);
+    this.setInstancedAttribute("aGlyphBandScale", this.aGlyphBandScale);
+    this.setInstancedAttribute("aBandMaxTexCoords", this.aBandMaxTexCoords);
+    this.setInstancedAttribute("aGlyphColor", this.aGlyphColor);
+    this.setInstancedAttribute("aGlyphParams", this.aGlyphParams);
+
+    this.maxGlyphs = targetCapacity;
+  }
+
+  private ensureCapacityForRequestedCharacters(
+    requestedCharacters: number,
+  ): void {
+    const requested = Math.max(1, Math.ceil(requestedCharacters));
+    const target = this.glyphCount + Math.ceil(requested * 1.05);
+    if (target > this.maxGlyphs) {
+      this.resizeCapacity(target);
+    }
+  }
+
   clear(): void {
     this.glyphCount = 0;
     this.instanceCount = 0;
@@ -111,8 +166,8 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
     style?: SlugGlyphStyle | null,
   ): boolean {
     if (this.glyphCount >= this.maxGlyphs) {
-      console.warn("Max glyphs reached");
-      return false;
+      const growBy = Math.max(1, Math.ceil(this.maxGlyphs * 0.05));
+      this.resizeCapacity(this.maxGlyphs + growBy);
     }
 
     const index = this.glyphCount;
@@ -348,6 +403,11 @@ export class SlugGeometry extends THREE.InstancedBufferGeometry {
         layoutLines.push({ text: line, sourceLineIndex: lineIndex });
       }
     });
+
+    const requestedCharacters = layoutLines.reduce((sum, { text: line }) => {
+      return sum + Array.from(line).length;
+    }, 0);
+    this.ensureCapacityForRequestedCharacters(requestedCharacters);
 
     layoutLines.forEach(({ text: line, sourceLineIndex: lineIndex }) => {
       let lineWidth = 0;

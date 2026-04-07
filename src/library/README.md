@@ -25,3 +25,9 @@ import { SlugGenerator, SlugLoader, SlugGeometry, SlugMaterial, injectSlug } fro
 ## Notes
 
 The demo UI and GitHub Pages showcase live outside this package in the root `ts-slug/` app.
+
+## Performance Advantages
+
+- Fully leverages the Three.js instancing system for efficient per-glyph rendering.
+- Can drive very high instance counts (benchmark scene targets about 100k glyph instances).
+- `SlugGeometry` auto-adjusts internal buffer capacity with no manual capacity input required.
