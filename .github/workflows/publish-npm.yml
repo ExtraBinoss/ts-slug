@@ -1,17 +1,10 @@
 name: Publish JSlug Library to npm
 
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
-    inputs:
-      release_type:
-        description: Version bump to apply before publishing
-        required: true
-        default: patch
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 permissions:
   contents: write
@@ -41,9 +34,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Bump version
-        working-directory: src/library
-        run: 'npm version ${{ inputs.release_type }} -m "chore(release): %s [skip ci]"'
+      - name: Verify tag matches package version
+        run: |
+          PKG_VERSION=$(npm --prefix src/library pkg get version | tr -d '"[:space:]')
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match src/library/package.json version ($PKG_VERSION)"
+            exit 1
+          fi
 
       - name: Build package
         run: npm run build:lib
@@ -52,6 +50,3 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --prefix src/library --access public
-
-      - name: Push release commit and tag
-        run: git push origin HEAD:${{ github.ref_name }} --follow-tags
